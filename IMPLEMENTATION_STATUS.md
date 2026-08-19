@@ -1,0 +1,51 @@
+# ShortcutKeyCounter v0.1.4 implementation status
+
+更新日: 2026-08-18
+
+## Implemented in this source package
+
+- v0.1.3ユーザー修正版をbaselineとして、既存Cargo dependency / `Arc<Pixmap>` / Clippy / test修正を維持。
+- Runtime Security GateをOverlay / Realtime Log / DB writerより前に維持し、unmodified単独入力の永続記録をhard prohibition。
+- Realtime LogはDB記録対象eventだけ。Key Mapping検索Captureも通常入力pipelineから完全分離。
+- Overlay設定操作中の不要renderを抑制し、display target / fixed monitor comboの操作不具合を修正。
+- DuplicateGuard 0.0〜10.0秒と詳細event retention 1〜365日をsettings/runtimeへ接続。
+- Key Mapping matrixを内部scroll化し、filter/bulk controls、0-column validation、物理キー検索を追加。
+- Rankingをキー別/アプリ別の左右2ペインへ統合。Today/7d/30d/All、前日同時刻比較、application filter再集計、average/ratio/comparison、3-state sortを実装。
+- Usage Graph backend/UIを追加。SQLiteでhour/day/month bucket集計し、top-5 series、ON/OFF、identity別color persistenceを実装。
+- Overlay Repeat Compressorを追加。700ms、3回目から `×N`、count-only bump animation。DB DuplicateGuardとは独立。
+- Repeat Counter Themeを`overlay-theme.json` schema v3へ追加し、設定画面PreviewとNative rendererで共用。
+- Overlay retreat clickはmodifier付きでもShortcutKeyCounter内部で完全破棄し、native click-throughを維持。
+- Test-only sample generationを前日終端60日・約10,000eventへ変更。Productionのrecordable shortcut/applicationを母集団にし、60日app usageと前日Realtime Log sampleを生成。
+- UIは `ShortcutKeyCounter_bugfix_ui_mock_v3.html` のnavigation、Ranking、Usage Graph、Settings、Mapping構成を実装基準として反映。
+- release-facing versionを0.1.4へ更新し、旧v0.1.2 nested ZIPをsource packageから除去。
+
+## Validation performed in this environment
+
+PASS / 実施済み:
+
+- TypeScript strict compile (`npx tsc --noEmit`)。
+- UI DOM literal-ID/static selector整合確認。
+- HTML duplicate ID検査。
+- Rust source delimiter static scan。
+- `tauri.conf.json` JSON parse。
+- workspace/application/crate `Cargo.toml` TOML parse。
+- SQLite migrationをin-memory DBで実行。
+- v0.1.4 Ranking/Usage Graph SQLのactual schema上で構文・集計確認。
+- local Cargo package / Tauri version audit。
+- release scriptへv0.1.4 static regression gatesを追加。
+
+この環境では実行不可:
+
+- `cargo fmt`, `cargo check`, `cargo clippy`, `cargo test`, Rust release build（Rust/Cargo toolchainなし）。
+- Tauri/Win32 Native build、keyboard/mouse hook、UI Automation、UAC/Integrity Level、Tray、multi-monitor/DPI、hardware wheelの実機試験（Windows runtimeなし）。
+
+## Required release gate
+
+Windowsで次を実行すること。
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build-release.ps1
+```
+
+その後 `docs/v0.1.4-windows-acceptance-checklist.md` を完了する。Windows-only項目が未確認の間、本source packageをrelease-ready binaryとは扱わない。

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ShortcutKeyCounter</title>
+  <link rel="stylesheet" href="./styles/main.css" />
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-icon" aria-label="C key"><b>C</b></div><div class="brand-copy"><strong>ShortcutKeyCounter</strong><small id="brandVersion">v0.1.4</small></div></div>
+    <nav class="nav">
+      <button class="active" data-page="dashboard"><span class="icon">▦</span><span class="label">ダッシュボード</span></button>
+      <div class="nav-tree open" id="rankingNavTree">
+        <button class="nav-parent" id="rankingNavToggle" type="button"><span class="icon">≡</span><span class="label">計測結果</span><span class="nav-caret">⌄</span></button>
+        <div class="nav-children">
+          <button data-page="realtime-log"><span class="tree-line">├</span><span class="label">リアルタイムログ</span></button>
+          <button data-page="ranking"><span class="tree-line">├</span><span class="label">ランキング</span></button>
+          <button data-page="usage"><span class="tree-line">├</span><span class="label">使用率グラフ</span></button>
+          <button data-page="matrix"><span class="tree-line">└</span><span class="label">キー × アプリ見取り図</span></button>
+        </div>
+      </div>
+      <button data-page="shortcut-detail"><span class="icon">⌘</span><span class="label">ショートカット詳細</span></button>
+      <button data-page="key-mapping"><span class="icon">⌨</span><span class="label">キーマッピング</span></button>
+      <button data-page="excluded"><span class="icon">⊘</span><span class="label">除外アプリ</span></button>
+      <button data-page="data"><span class="icon">⇩</span><span class="label">データ管理</span></button>
+      <button data-page="settings"><span class="icon">⚙</span><span class="label">設定</span></button>
+      <button data-page="help"><span class="icon">?</span><span class="label">ヘルプ</span></button>
+    </nav>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <h1 id="topTitle">ダッシュボード</h1>
+      <div class="top-actions"><span class="db-badge" id="dbBadge" hidden>検証DB</span>
+        <div><div class="status-chip" id="statusChip"><span class="dot"></span><span>確認中</span></div><div class="health-line" id="healthLine"></div></div>
+        <button class="capture-btn" id="captureBtn">計測状態を確認中</button>
+      </div>
+    </header>
+
+    <div class="content">
+      <section class="page active" id="dashboard">
+        <div class="page-head"><div><h2>ショートカット利用状況</h2><p>ローカルSQLiteから集計しています。</p></div><div class="segmented range-control" data-page-range="dashboard"><button data-range="today" class="active">今日</button><button data-range="7">7日</button><button data-range="30">30日</button><button data-range="all">全期間</button></div></div>
+        <div class="cards" id="dashboardCards"></div>
+        <div class="layout-2">
+          <div class="panel"><div class="panel-head"><h3>日別利用推移</h3><small id="dashboardTrendLabel"></small></div><div class="chart" id="dashboardTrend"></div></div>
+          <div class="panel"><div class="panel-head"><h3>アプリ別ランキング</h3><small>選択期間</small></div><div class="apps" id="dashboardApps"></div></div>
+        </div>
+        <div class="panel" style="margin-top:12px"><div class="panel-head"><h3>キー別ランキング</h3><button class="btn ghost" id="showAllRanking">すべて表示 →</button></div><table class="table"><thead><tr><th>#</th><th>Shortcut</th><th>Count</th><th>利用アプリ</th><th>比率</th></tr></thead><tbody id="dashboardRanking"></tbody></table></div>
+      </section>
+
+      <section class="page" id="daily-ranking">
+        <div class="page-head"><div><h2>日刊ランキング</h2><p>指定した1日のキー別・アプリ別ランキングを二段階ツリーで確認します。</p></div><div class="toolbar"><label class="date-picker-label">対象日 <input class="input" type="date" id="dailyRankingDate" /></label></div></div>
+        <div class="detail-grid">
+          <div class="panel"><div class="panel-head"><h3>キー別</h3><small>キー → 利用アプリ</small></div><table class="table tree-table"><thead><tr><th>順位</th><th>Shortcut / Application</th><th>Count</th><th>比率</th></tr></thead><tbody id="dailyKeyRankingBody"></tbody></table></div>
+          <div class="panel"><div class="panel-head"><h3>アプリ別</h3><small>アプリ → 利用キー</small></div><table class="table tree-table"><thead><tr><th>順位</th><th>Application / Shortcut</th><th>Count</th><th>比率</th></tr></thead><tbody id="dailyAppRankingBody"></tbody></table></div>
+        </div>
+      </section>
+
+      <section class="page" id="ranking">
+        <div class="page-head"><div><h2>ランキング</h2><p>キー別とアプリ別を同じ期間条件で左右に比較します。</p></div><div class="segmented" id="analyticsRange"><button data-range="today" class="active">今日</button><button data-range="7d">7日</button><button data-range="30d">30日</button><button data-range="all">全期間</button></div></div>
+        <div class="ranking-grid-v014">
+          <section class="panel rank-pane-v014">
+            <div class="panel-head rank-head-v014"><div><h3>キー別ランキング</h3></div><label class="rank-filter-v014">対象アプリ<select class="select" id="analyticsAppFilter"><option value="">すべて</option></select></label></div>
+            <div class="rank-table-wrap"><table class="table rank-table-v014" id="keyRankingV014"><thead><tr><th>#</th><th><button class="sort-button-v014" data-sort="shortcut" data-dir="none">ショートカット<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014" data-sort="count" data-dir="none">個数<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014" data-sort="average" data-dir="none">平均<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014" data-sort="ratio" data-dir="none">構成比<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014 comparison-header" data-sort="comparison_rate" data-dir="none">前日比<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th></tr></thead><tbody id="keyRankingV014Body"></tbody></table></div>
+          </section>
+          <section class="panel rank-pane-v014">
+            <div class="panel-head rank-head-v014"><div><h3>アプリ別ランキング</h3></div></div>
+            <div class="rank-table-wrap"><table class="table rank-table-v014" id="appRankingV014"><thead><tr><th>#</th><th><button class="sort-button-v014" data-sort="application" data-dir="none">プロセス名<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014" data-sort="count" data-dir="none">個数<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014" data-sort="key_type_count" data-dir="none">キー種数<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014" data-sort="active_seconds" data-dir="none">利用時間<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014" data-sort="ratio" data-dir="none">構成比<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th><th><button class="sort-button-v014 comparison-header" data-sort="comparison_rate" data-dir="none">前日比<span class="sort-icons"><span>▲</span><span>▼</span></span></button></th></tr></thead><tbody id="appRankingV014Body"></tbody></table></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="page" id="usage">
+        <div class="page-head"><div><h2>使用率グラフ</h2><p>ランキング順の系列から表示対象を選択します。初期状態は上位5件です。</p></div><div class="toolbar"><div class="segmented" id="usageMode"><button data-mode="keys" class="active">キーごと</button><button data-mode="apps">アプリごと</button></div><div class="segmented" id="usageRange"><button data-range="today" class="active">今日</button><button data-range="7d">7日</button><button data-range="30d">30日</button><button data-range="all">全期間</button></div></div></div>
+        <div class="usage-layout-v014">
+          <aside class="panel usage-series-panel"><div class="panel-head"><h3 id="usageSeriesTitle">キーランキング</h3></div><div class="usage-series-list" id="usageSeriesList"></div></aside>
+          <section class="panel usage-graph-panel"><div class="panel-head"><div><h3 id="usageGraphTitle">上位キーの使用回数推移</h3><small id="usageAxisNote">横軸: 時間 / 縦軸: 回数</small></div></div><div class="usage-canvas-wrap"><canvas id="usageCanvas" width="1100" height="430"></canvas></div><div class="usage-legend" id="usageLegend"></div></section>
+        </div>
+      </section>
+
+      <section class="page" id="applications">
+        <div class="page-head"><div><h2>アプリ別ランキング</h2><p>アプリを展開すると、そのアプリで使用したキーの内訳を表示します。</p></div><div class="segmented range-control" data-page-range="applications"><button data-range="today">今日</button><button data-range="7">7日</button><button data-range="30">30日</button><button data-range="all" class="active">全期間</button></div></div>
+        <div class="cards" id="applicationCards"></div>
+        <div class="panel"><div class="panel-head"><h3>アプリ別ランキング</h3><small>アプリ → 利用キー</small></div><table class="table tree-table"><thead><tr><th>順位</th><th>Application / Shortcut</th><th>Count</th><th>Unique Shortcuts</th><th>利用時間</th><th>比率</th></tr></thead><tbody id="applicationBody"></tbody></table></div>
+      </section>
+
+      <section class="page" id="shortcut-detail">
+        <div class="page-head"><div><h2>ショートカット詳細</h2><p>1つのショートカットをアプリ別・日別に確認します。</p></div><div class="toolbar"><select class="select" id="shortcutSelect"></select><div class="segmented range-control" data-page-range="shortcut-detail"><button data-range="today" class="active">今日</button><button data-range="7">7日</button><button data-range="30">30日</button><button data-range="all">全期間</button></div></div></div>
+        <div class="detail-grid">
+          <div class="panel"><div class="muted">選択中</div><div class="big-shortcut" id="selectedShortcut">—</div><div class="cards" style="grid-template-columns:1fr 1fr;margin:0"><div class="card"><div class="card-label">合計</div><div class="card-value" id="detailTotal">0</div></div><div class="card"><div class="card-label">利用アプリ</div><div class="card-value" id="detailAppCount">0</div></div></div></div>
+          <div class="panel"><div class="panel-head"><h3>アプリ別</h3></div><div class="apps" id="detailApps"></div></div>
+        </div>
+        <div class="panel" style="margin-top:12px"><div class="panel-head"><h3>日別利用推移</h3></div><div class="chart" id="detailTrend"></div></div>
+      </section>
+
+      <section class="page" id="realtime-log">
+        <div class="page-head"><div><h2>リアルタイムログ</h2><p>検知したショートカットと記録判定をメモリ上で確認します。通常文字列は表示・保存しません。</p></div><div class="toolbar"><span class="status-ok live-indicator">● LIVE</span><button class="btn" id="clearRealtimeLog">表示をクリア</button></div></div>
+        <div class="panel"><div class="panel-head"><h3>Capture Events</h3><small>最大500件 / UIを閉じてもバックエンド側の短期リングバッファのみ継続</small></div><div class="log-table-wrap"><table class="table"><thead><tr><th>時刻</th><th>Shortcut</th><th>Application</th><th>判定</th></tr></thead><tbody id="realtimeLogBody"></tbody></table></div></div>
+      </section>
+
+      <section class="page" id="matrix">
+        <div class="page-head"><div><h2>キー × アプリ見取り図</h2><p>キーとアプリの二軸で利用傾向を俯瞰します。濃いセルほど利用回数が多いことを示します。</p></div><div class="segmented range-control" data-page-range="matrix"><button data-range="today">今日</button><button data-range="7" class="active">7日</button><button data-range="30">30日</button><button data-range="all">全期間</button></div></div>
+        <div class="panel"><div class="panel-head"><h3>キー × アプリ マトリクス</h3><small id="matrixRangeLabel"></small></div><div class="matrix-wrap"><table class="table matrix-table" id="matrixTable"><thead id="matrixHead"></thead><tbody id="matrixBody"></tbody></table></div></div>
+      </section>
+
+      <section class="page" id="key-mapping">
+        <div class="page-head"><div><h2>キーマッピング</h2><p>キーごとの表示・記録ポリシーを修飾パターン別に編集します。</p></div><div class="toolbar"><button class="btn primary" id="mappingSave">保存</button><button class="btn" id="mappingExport">JSON出力</button></div></div>
+        <div class="mapping-controls-v014 section">
+          <div class="mapping-control-box"><strong>分類フィルター</strong><div class="choice-group" id="mappingCategoryFilter"><button type="button" class="active" data-category="alnum">アルファベット・数字</button><button type="button" class="active" data-category="modifier">修飾キー</button><button type="button" class="active" data-category="function">ファンクションキー</button><button type="button" class="active" data-category="system">システム・その他</button></div></div>
+          <div class="mapping-control-box"><strong>一括変更</strong><div class="toolbar"><button class="btn" id="mappingEnableAll">選択範囲を表示＋記録</button><button class="btn" id="mappingDisableAll">選択範囲を非表示</button><button class="btn" id="mappingReset">選択範囲を既定に戻す</button></div><div class="mapping-selection-message error" id="mappingSelectedColumns">列を選択してください。列見出しをクリックして複数選択できます。</div></div>
+        </div>
+        <div class="panel keymap-panel"><div class="panel-head"><div><h3>全キー × 修飾キーパターン</h3></div><button class="btn" id="mappingKeySearch">⌨ キーを入力して検索</button></div><div class="matrix-wrap key-policy-matrix-wrap"><table class="table key-policy-matrix"><thead id="keyPolicyMatrixHead"></thead><tbody id="keyPolicyMatrixBody"></tbody></table></div></div>
+      </section>
+
+      <section class="page" id="excluded">
+        <div class="page-head"><div><h2>除外アプリ</h2><p>ここに登録したアプリ上のショートカットは保存しません。</p></div></div>
+        <div class="notice section">パスワードマネージャー等は初期状態で除外されています。デフォルト除外を解除すると、そのアプリ上のショートカット利用情報が保存される可能性があります。</div>
+        <div class="panel"><div class="panel-head"><h3>除外対象</h3><div class="toolbar"><input class="input" id="excludeInput" placeholder="Example.exe" /><button class="btn primary" id="addExclude">追加</button></div></div><table class="table"><thead><tr><th>Executable</th><th>Source</th><th>状態</th><th></th></tr></thead><tbody id="excludeBody"></tbody></table></div>
+      </section>
+
+      <section class="page" id="data">
+        <div class="page-head"><div><h2>データ管理</h2><p>Active DBを切り替え、CSV出力、バックアップ、検証サンプル生成、削除を行います。</p></div></div>
+        <div class="panel section"><div class="panel-head"><h3>使用データベース</h3><small id="activeDbPath">確認中...</small></div>
+          <div class="setting-row"><div><strong>本番DB / 検証DB</strong><span>切替後はCapture・Dashboard・ランキング・CSV・バックアップ等、アプリ全体が選択DBを使用します。</span></div><div class="choice-group db-switch" id="databaseSwitch"><button type="button" data-db="production" class="active">本番データベース</button><button type="button" data-db="test">検証データベース</button></div></div>
+        </div>
+        <div class="panel section"><div class="panel-head"><h3>検証データ</h3><small>書き込み先: 検証DBのみ</small></div><div class="setting-row"><div><strong>サンプルデータを生成</strong><span id="sampleSourceText">本番DBの実績から生成元を確認中...</span></div><button class="btn primary" id="generateSample">60日・約10,000件を生成</button></div></div>
+        <div class="panel section"><div class="panel-head"><h3>CSVエクスポート</h3><small>保存先: Downloads</small></div><div class="setting-row"><div><strong>日次集計CSV</strong><span>date, shortcut, application, count</span></div><button class="btn primary" id="exportDaily">CSV出力</button></div><div class="setting-row"><div><strong>詳細イベントCSV</strong><span>直近7日間のみ / timestamp, shortcut, application</span></div><button class="btn primary" id="exportEvents">CSV出力</button></div></div>
+        <div class="panel section"><div class="panel-head"><h3>SQLite DBバックアップ</h3><small id="backupDbName">現在DB</small></div><div class="setting-row"><div><strong>現在のDBをバックアップ</strong><span>稼働中DBをOSコピーせず安全なスナップショットを作成します。</span></div><button class="btn" id="backupDb">DBバックアップ</button></div></div>
+        <div class="panel danger-zone"><div class="panel-head"><h3>危険な操作</h3></div><div class="setting-row"><div><strong>前日以前のデータを削除</strong><span>選択中DBの shortcut_events / shortcut_daily / application_usage_daily を前日以前の条件で削除します。実データも対象で元に戻せません。</span></div><button class="btn danger" id="deleteYesterdayBtn">前日以前を削除</button></div><div class="setting-row"><div><strong>全統計データを削除</strong><span>選択中DBの詳細・日次・利用時間を全削除します。</span></div><button class="btn danger" id="deleteBtn">全データ削除</button></div></div>
+      </section>
+
+      <section class="page" id="settings">
+        <div class="page-head"><div><h2>設定</h2><p>Windows起動、権限、計測動作を設定します。</p></div></div>
+        <div class="panel section"><div class="panel-head"><h3>外観</h3></div><div class="setting-row"><div><strong>テーマ</strong><span>画面配色をダークモードまたはライトモードに切り替えます。設定は次回起動時にも引き継がれます。</span></div><div class="segmented" id="themeControl"><button type="button" data-theme="dark" class="active">ダーク</button><button type="button" data-theme="light">ライト</button></div></div></div>
+        <div class="panel section"><div class="panel-head"><h3>ショートカットオーバーレイ</h3><button class="btn" id="previewOverlaySample">SAMPLE</button></div>
+          <div class="setting-row"><div><strong>入力キーを画面に表示</strong><span>CaptureとDB記録は止めず、表示だけを切り替えます。</span></div><div class="switch on" id="overlaySwitch" role="switch" tabindex="0" aria-label="オーバーレイ表示"></div></div>
+          <div class="overlay-controls">
+            <div class="overlay-control-group"><label for="overlayDuration"><strong>表示時間</strong><span>完全表示する時間（0.1〜10秒）</span></label><div class="input-with-unit"><input class="input" id="overlayDuration" type="number" min="0.1" max="10" step="0.1"><span>秒</span></div></div>
+            <div class="overlay-control-group"><label for="overlayMaxRows"><strong>最大表示行数</strong><span>1〜10行、既定3行</span></label><input class="input narrow-input" id="overlayMaxRows" type="number" min="1" max="10" step="1"></div>
+          </div>
+          <div class="overlay-subhead">位置</div>
+          <div class="overlay-controls">
+            <div class="overlay-control-group"><label for="overlayDisplayMode"><strong>表示先</strong><span>デスクトップ全体またはアクティブウィンドウ内</span></label><select class="select" id="overlayDisplayMode"><option value="desktop">デスクトップ</option><option value="active-window">アクティブウィンドウ内</option></select></div>
+            <div class="overlay-monitor-row"><label for="overlayMonitorMode"><strong>表示モニター</strong><span>固定時だけモニター番号を選択</span></label><select class="select" id="overlayMonitorMode"><option value="active-window">アクティブウィンドウのモニター</option><option value="fixed">固定モニター</option></select><label class="monitor-number-label" for="overlayMonitorSelect">モニター番号</label><select class="select" id="overlayMonitorSelect"><option value="">取得中...</option></select></div>
+          </div>
+          <div class="choice-group overlay-mode" id="overlayPositionMode" role="group" aria-label="表示位置モード"><button class="active" type="button" data-mode="fixed">固定配置</button><button type="button" data-mode="auto">アクティブウィンドウ回避</button></div>
+          <div class="overlay-position-grid choice-grid" id="overlayPositionGrid" role="group" aria-label="表示位置">
+            <button class="btn" type="button" data-position="top-left">左上</button><button class="btn" type="button" data-position="top-center">上中央</button><button class="btn" type="button" data-position="top-right">右上</button>
+            <button class="btn" type="button" data-position="middle-left">左中央</button><button class="btn" type="button" data-position="center">中央</button><button class="btn" type="button" data-position="middle-right">右中央</button>
+            <button class="btn" type="button" data-position="bottom-left">左下</button><button class="btn" type="button" data-position="bottom-center">下中央</button><button class="btn" type="button" data-position="bottom-right">右下</button>
+          </div>
+          <div class="overlay-subhead">外観</div>
+          <div class="overlay-controls"><div class="overlay-control-group"><label for="overlayBackgroundColor"><strong>背景色</strong><span>キーキャップの色とは独立</span></label><div class="color-inputs"><input class="input" id="overlayBackgroundColor" type="text" maxlength="7" placeholder="#202020"><input id="overlayBackgroundColorPicker" type="color" value="#202020" aria-label="背景色を選択"></div></div><div class="overlay-control-group"><label for="overlayBackgroundOpacity"><strong>透明度</strong><span id="overlayOpacityValue">80%</span></label><input id="overlayBackgroundOpacity" type="range" min="0" max="100" step="1"></div></div>
+          <div class="overlay-subhead">連打圧縮の見た目</div>
+          <div class="repeat-theme-layout">
+            <div class="repeat-theme-preview" id="repeatCounterPreview" aria-label="連打カウンターのプレビュー"><span class="repeat-preview-key">Ctrl + C</span><span class="repeat-preview-badge" id="repeatCounterBadge">×12</span></div>
+            <div class="repeat-theme-controls">
+              <div class="overlay-control-group"><label for="repeatCounterBackground"><strong>カウンター背景色</strong></label><div class="color-inputs"><input class="input" id="repeatCounterBackground" type="text" maxlength="7"><input id="repeatCounterBackgroundPicker" type="color" aria-label="カウンター背景色"></div></div>
+              <div class="overlay-control-group"><label for="repeatCounterText"><strong>カウンター文字色</strong></label><div class="color-inputs"><input class="input" id="repeatCounterText" type="text" maxlength="7"><input id="repeatCounterTextPicker" type="color" aria-label="カウンター文字色"></div></div>
+              <div class="overlay-control-group"><label for="repeatCounterAccent"><strong>枠／影色</strong></label><div class="color-inputs"><input class="input" id="repeatCounterAccent" type="text" maxlength="7"><input id="repeatCounterAccentPicker" type="color" aria-label="カウンター枠・影色"></div></div>
+              <div class="overlay-control-group"><label for="repeatCounterShape"><strong>バッジ形状</strong></label><select class="select" id="repeatCounterShape"><option value="pill">ピル</option><option value="rounded">角丸</option><option value="square">スクエア</option></select></div>
+              <div class="overlay-control-group"><label for="repeatCounterRotation"><strong>回転角</strong><span>-20〜20°</span></label><div class="input-with-unit"><input class="input narrow-input" id="repeatCounterRotation" type="number" min="-20" max="20" step="1"><span>°</span></div></div>
+              <div class="overlay-control-group"><label for="repeatCounterFontSize"><strong>フォントサイズ</strong><span>8〜32px</span></label><div class="input-with-unit"><input class="input narrow-input" id="repeatCounterFontSize" type="number" min="8" max="32" step="1"><span>px</span></div></div>
+            </div>
+          </div>
+          <div class="overlay-subhead">アニメーション</div>
+          <div class="overlay-controls"><div class="overlay-control-group"><label for="overlayEnterAnimation"><strong>IN</strong></label><select class="select" id="overlayEnterAnimation"><option value="none">なし</option><option value="fade">フェード</option><option value="slide-up">スライドアップ</option><option value="slide-down">スライドダウン</option><option value="slide-left">スライド左</option><option value="slide-right">スライド右</option><option value="pop">ポップ</option></select></div><div class="overlay-control-group"><label for="overlayExitAnimation"><strong>OUT</strong></label><select class="select" id="overlayExitAnimation"><option value="none">なし</option><option value="fade">フェード</option><option value="slide-up">スライドアップ</option><option value="slide-down">スライドダウン</option><option value="slide-left">スライド左</option><option value="slide-right">スライド右</option><option value="shrink">縮小</option></select></div><div class="overlay-control-group"><label for="overlayEnterMs"><strong>IN時間</strong></label><div class="input-with-unit"><input class="input" id="overlayEnterMs" type="number" min="0" max="2000" step="10"><span>ms</span></div></div><div class="overlay-control-group"><label for="overlayExitMs"><strong>OUT時間</strong></label><div class="input-with-unit"><input class="input" id="overlayExitMs" type="number" min="0" max="2000" step="10"><span>ms</span></div></div></div>
+          <div class="overlay-subhead">キー表示ポリシー</div>
+          <div class="notice compact">全キー×全修飾キーパターンの設定は、専用の「キーマッピング」画面で変更できます。既定値は単独キーが「続けて表示」、修飾キー付き入力が「記録と表示改行」です。</div>
+          <div class="setting-row compact"><div><strong>編集可能なJSON</strong><span class="exe">overlay_key_labels.json / overlay_key_policy.json / overlay-theme.json</span></div><div class="toolbar"><button class="btn" id="openOverlayLabels">表示名JSON</button><button class="btn" id="openOverlayPolicy">ポリシーJSON</button><button class="btn" id="openOverlayTheme">テーマJSON</button><button class="btn" id="openOverlayDesignFolder">SVGフォルダー</button><button class="btn primary" id="reloadOverlayAssets">再読み込み</button></div></div>
+        </div>
+        <div class="panel section"><div class="panel-head"><h3>Windows</h3></div><div class="setting-row"><div><strong>Windowsログオン時に自動起動</strong><span>初期設定ON。自動起動コマンドには -hide を付け、UIを生成せず通知領域だけで開始します。</span></div><div class="switch" id="autoStartSwitch"></div></div><div class="setting-row"><div><strong>管理者権限アプリでも計測</strong><span>ShortcutKeyCapture.exe だけをUAC昇格して起動します。</span></div><div class="switch" id="elevatedSwitch"></div></div></div>
+        <div class="panel section"><div class="panel-head"><h3>計測</h3></div>
+          <div class="setting-row"><div><strong>アプリ利用時間を記録</strong><span>既定OFF。Foreground Windowの概算時間を日次集計します。</span></div><div class="switch" id="usageTrackingSwitch" role="switch" aria-label="アプリ利用時間記録"></div></div>
+          <div class="setting-row"><div><strong>同一ショートカット連続入力抑制</strong><span>0で無効。次の入力イベントから即時反映します。</span></div><div class="input-with-unit"><input class="input narrow-input" id="duplicateGuardSeconds" type="number" min="0" max="10" step="0.1"><span>秒</span></div></div>
+          <div class="setting-row"><div><strong>詳細イベント保持</strong><span>起動時に期限切れイベントを削除します。</span></div><div class="input-with-unit"><input class="input narrow-input" id="retentionDays" type="number" min="1" max="365" step="1"><span>日</span></div></div>
+        </div>
+        <div class="panel"><div class="panel-head"><h3>保存とプライバシー</h3></div><div class="setting-row"><div><strong>データ保存先</strong><span class="exe" id="dbPath">読み込み中...</span></div><button class="btn" id="openDataFolder">フォルダーを開く</button></div></div>
+      </section>
+
+      <section class="page" id="help">
+        <div class="page-head"><div><h2>ヘルプ</h2><p>ShortcutKeyCounter の基本情報と簡単な使い方です。</p></div></div>
+        <div class="detail-grid section">
+          <div class="panel"><div class="panel-head"><h3>バージョン情報</h3></div><div class="info-list"><div class="info-item"><strong>アプリ</strong><span>ShortcutKeyCounter <em id="helpVersion">読み込み中...</em></span></div><div class="info-item"><strong>作者</strong><span id="helpAuthor">読み込み中...</span></div><div class="info-item"><strong>GitHub</strong><span class="exe" id="helpGithubUrl">読み込み中...</span><button class="btn info-action" id="openGithub">GitHubを開く</button></div></div></div><div class="panel"><div class="panel-head"><h3>使い方</h3></div><ol class="help-steps"><li>アプリを起動すると計測が開始されます。</li><li>キーマッピング画面で、単独キー・Shiftを含む複合キー・マウス入力ごとの表示／記録動作を選べます。</li><li>ダッシュボードやランキングで利用状況を確認します。</li><li>除外アプリとキーマッピングで計測対象を調整できます。</li><li>ウィンドウを閉じるとWebViewを破棄し、バックエンドだけ通知領域に常駐します。</li><li>通知領域のアイコンをダブルクリックするとUIを再生成して表示します。</li><li>設定の「ショートカットオーバーレイ」で、デスクトップ表示、アクティブウィンドウ内表示、表示モニターを選べます。</li></ol></div>
+        </div>
+        <div class="notice">入力文章・URL・ウィンドウタイトル・ドキュメント名は保存しません。リアルタイムログも正規化ショートカット、実行ファイル名、判定結果のみです。</div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="modal-backdrop" id="deleteModal"><div class="modal"><h3>統計データをすべて削除しますか？</h3><p>詳細イベント・日次集計・アプリ利用時間が選択中DBから削除されます。この操作は元に戻せません。設定と除外アプリ設定は保持されます。</p><div class="modal-actions"><button class="btn" id="cancelDelete">キャンセル</button><button class="btn danger" id="confirmDelete">削除する</button></div></div></div>
+<div class="modal-backdrop" id="elevatedModal"><div class="modal"><h3>管理者権限モードを有効にしますか？</h3><p>管理者権限で動作するアプリ上のショートカット取得のため、入力取得専用プロセス ShortcutKeyCapture.exe をUAC昇格して起動します。UIとDB処理は通常権限のままです。</p><div class="modal-actions"><button class="btn" id="cancelElevated">キャンセル</button><button class="btn primary" id="confirmElevated">有効にする</button></div></div></div>
+<div class="toast" id="toast"><span id="toastText"></span><button class="btn toast-action" id="toastAction">フォルダーを開く</button></div>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>

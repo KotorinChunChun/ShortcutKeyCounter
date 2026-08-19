@@ -1,0 +1,29 @@
+[package]
+name = "shortcut-key-counter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[[bin]]
+name = "ShortcutKeyCounter"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono.workspace = true
+fontdue = "0.9"
+resvg = "0.47"
+crossbeam-channel.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+shortcut-common = { path = "../../crates/shortcut-common" }
+shortcut-core = { path = "../../crates/shortcut-core" }
+shortcut-storage = { path = "../../crates/shortcut-storage" }
+shortcut-windows = { path = "../../crates/shortcut-windows" }
+tauri = { version = "2", features = ["tray-icon"] }
+thiserror.workspace = true
+windows.workspace = true

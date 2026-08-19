@@ -1,0 +1,23 @@
+ShortcutKeyCounter v0.1.4 post-acceptance static audit
+Date: 2026-08-18
+
+PASS TypeScript compiler: tsc -p apps/shortcut-key-counter/ui/tsconfig.json
+PASS Generated JavaScript syntax: node --check dist/js/main.js
+PASS Generated JavaScript syntax: node --check dist/js/api.js
+PASS HTML IDs: no duplicates
+PASS TypeScript el(...) static ID references: all found in index.html
+PASS Removed UI text: "対象アプリで集計値そのものを再計算"
+PASS Removed UI text: "上位カードを廃止し、一覧へ統合"
+PASS Removed mapping status text: "n/nキー表示 × 16パターン / 選択 n列"
+PASS Key search button is inside "全キー × 修飾キーパターン" panel header
+PASS Key search retains backend capture guard and adds WebView keyboard/mouse/wheel fallback
+PASS Light theme sets color-scheme: light
+PASS Light theme scrollbar track/thumb overrides are present
+PASS Light theme overlay active-position override is present after generic button background
+PASS Ranking application filter remains backend-aggregated (count/average/ratio/comparison are recalculated)
+PASS Sample generator uses 60-day correlated activity + weekday/weekend factors + learning trend + long-tail app/key weights
+PASS Sample generator preserves previous-day >= 200 events for Realtime Log when event_count permits
+PASS sample_data.rs delimiter balance static check
+
+NOT RUN Rust cargo check/test/clippy/build (Rust toolchain unavailable in this environment)
+TOTAL STATIC FAILURES: 0

@@ -1,0 +1,41 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/shortcut-common",
+    "crates/shortcut-core",
+    "crates/shortcut-storage",
+    "crates/shortcut-windows",
+    "apps/shortcut-key-counter",
+    "apps/shortcut-key-capture",
+]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.4"
+license = "MIT"
+
+[workspace.dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+crossbeam-channel = "0.5"
+rusqlite = { version = "0.32", features = ["backup", "bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_IO",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Pipes",
+    "Win32_System_Registry",
+    "Win32_Security",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }

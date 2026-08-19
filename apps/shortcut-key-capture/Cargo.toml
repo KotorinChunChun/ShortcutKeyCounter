@@ -1,0 +1,16 @@
+[package]
+name = "shortcut-key-capture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "ShortcutKeyCapture"
+path = "src/main.rs"
+
+[dependencies]
+chrono.workspace = true
+crossbeam-channel.workspace = true
+shortcut-common = { path = "../../crates/shortcut-common" }
+shortcut-core = { path = "../../crates/shortcut-core" }
+shortcut-windows = { path = "../../crates/shortcut-windows" }

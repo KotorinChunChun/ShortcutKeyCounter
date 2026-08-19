@@ -1,0 +1,30 @@
+//! UIから独立したcapture backend。
+
+pub mod analytics;
+pub mod app_state;
+pub mod app_usage;
+pub mod capture_control;
+pub mod capture_health;
+pub mod capture_worker;
+pub mod command_api;
+pub mod command_error;
+pub mod database_environment;
+pub mod diagnostics;
+pub mod elevated_capture;
+pub mod exclusion_state;
+pub mod maintenance;
+pub mod runtime;
+pub mod sample_data;
+pub mod security_gate;
+pub mod settings;
+pub mod startup;
+pub mod tauri_commands;
+pub mod tray;
+
+pub mod app_info;
+pub mod key_mapping_state;
+pub mod key_policy;
+pub mod key_search;
+pub mod overlay;
+pub mod realtime_log;
+pub mod window_manager;
