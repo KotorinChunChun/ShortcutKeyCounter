@@ -64,7 +64,7 @@ Frontend:
 tsc -p .\apps\shortcut-key-counter\ui\tsconfig.json
 ```
 
-詳細は `docs/WINDOWS_BUILD_AND_ACCEPTANCE.md` を参照してください。
+詳細は [`docs/windows-build-and-acceptance.md`](docs/windows-build-and-acceptance.md) を参照してください。
 
 ## データ保存先
 

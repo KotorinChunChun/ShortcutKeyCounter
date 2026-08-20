@@ -245,7 +245,7 @@ Rapid input:
 
 ## v0.1.4 acceptance
 
-v0.1.4の追加受入項目は `docs/v0.1.4-windows-acceptance-checklist.md` を正とする。特に以下はrelease必須。
+v0.1.4の追加受入項目は [v0.1.4 Windows受入試験チェックリスト](../dev/history/v0.1.4/v0.1.4-checklist-windows-acceptance.md) を正とする。特に以下はrelease必須。
 
 - DuplicateGuard runtime値（0.0〜10.0秒）とretention（1〜365日）。
 - fixed monitor draft選択、切断済みmonitor ID、Light theme 9-position selected state。
