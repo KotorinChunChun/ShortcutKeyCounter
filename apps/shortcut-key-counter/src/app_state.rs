@@ -412,7 +412,7 @@ impl AppState {
         Ok(())
     }
 
-    /// 詳細イベント保持日数は次回起動時のretention cleanupから使用する。
+    /// 詳細ショートカット履歴の保持日数は次回起動時のretention cleanupから使用する。
     pub fn set_detail_event_retention_days(&self, days: u32) -> Result<(), AppStateError> {
         let database = self
             .settings_database

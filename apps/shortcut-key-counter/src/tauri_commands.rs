@@ -566,7 +566,7 @@ pub fn set_detail_event_retention_days(
     state.set_detail_event_retention_days(days).map_err(|_| {
         CommandError::new(
             "SETTINGS_FAILED",
-            "詳細イベント保持日数を保存できませんでした。",
+            "詳細ショートカット履歴の保持日数を保存できませんでした。",
         )
     })?;
     let db = settings_db_lock(&state)?;
@@ -710,7 +710,7 @@ pub fn export_events_csv(state: State<'_, AppState>) -> Result<ExportResult, Com
     })?;
     let db = db_lock(&state)?;
     command_api::export_events_csv_command(&db, directory)
-        .map_err(|_| CommandError::new("EXPORT_FAILED", "詳細イベントCSVを出力できませんでした。"))
+        .map_err(|_| CommandError::new("EXPORT_FAILED", "詳細ショートカット履歴CSVを出力できませんでした。"))
 }
 
 #[tauri::command]

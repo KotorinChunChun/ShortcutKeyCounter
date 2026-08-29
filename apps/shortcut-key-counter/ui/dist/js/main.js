@@ -1323,14 +1323,14 @@ function bindEvents() {
             return;
         const result = await api.generateSampleData();
         cachedBounds = null;
-        showToast(`検証DBへ ${formatNumber(result.events_generated)}件を生成しました（60日 / 利用時間 ${formatNumber(result.usage_rows_generated)}行 / Realtime Log ${formatNumber(result.realtime_log_rows)}件）。`);
+        showToast(`検証DBへ詳細ショートカット履歴 ${formatNumber(result.events_generated)}件を生成しました（60日 / 利用時間 ${formatNumber(result.usage_rows_generated)}行 / リアルタイムログ ${formatNumber(result.realtime_log_rows)}件）。`);
         await loadDataManagement();
     }).catch(error => showToast(errorMessage(error))));
     el('deleteYesterdayBtn').addEventListener('click', event => void withButton(event.currentTarget, async () => {
         const env = currentDatabaseEnvironment ?? await refreshDatabaseEnvironment();
         const preview = await api.previewDeleteYesterdayAndEarlier();
         const total = preview.events + preview.daily_rows + preview.usage_rows;
-        const details = `対象DB: ${env.display_name}\n削除基準日: ${preview.cutoff_date} 以下\n詳細イベント: ${preview.events}件\n日次集計: ${preview.daily_rows}行\n利用時間: ${preview.usage_rows}行\n合計対象: ${total}\n\n実データも削除対象で、元に戻せません。`;
+        const details = `対象DB: ${env.display_name}\n削除基準日: ${preview.cutoff_date} 以下\n詳細ショートカット履歴: ${preview.events}件\n日次集計: ${preview.daily_rows}行\n利用時間: ${preview.usage_rows}行\n合計対象: ${total}\n\n実データも削除対象で、元に戻せません。`;
         const typed = window.prompt(`${details}\n\n実行するには「削除」と入力してください。`, '');
         if (typed !== '削除')
             return;
@@ -1347,7 +1347,7 @@ function bindEvents() {
             const result = await api.deleteStatistics();
             cachedBounds = null;
             deleteModal.classList.remove('show');
-            showToast(`統計データを削除しました（詳細 ${result.events_deleted}件 / 日次 ${result.daily_deleted}件 / 利用時間 ${result.usage_deleted}行）。`);
+            showToast(`統計データを削除しました（詳細ショートカット履歴 ${result.events_deleted}件 / 日次 ${result.daily_deleted}件 / 利用時間 ${result.usage_deleted}行）。`);
             await loadDashboard();
         }
         catch (error) {
@@ -1409,12 +1409,12 @@ function bindEvents() {
         const input = event.target;
         const value = Math.round(Number(input.value));
         if (!Number.isFinite(value) || value < 1 || value > 365) {
-            showToast('詳細イベント保持日数は1〜365日で指定してください。');
+            showToast('詳細ショートカット履歴の保持日数は1〜365日で指定してください。');
             return renderSettings();
         }
         try {
             await renderSettings(await api.setDetailEventRetentionDays(value));
-            showToast(`詳細イベント保持を ${value} 日に変更しました。`);
+            showToast(`詳細ショートカット履歴の保持を ${value} 日に変更しました。`);
         }
         catch (error) {
             showToast(errorMessage(error));

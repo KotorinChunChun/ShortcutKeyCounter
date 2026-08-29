@@ -1,6 +1,6 @@
 //! v0.1.4 ranking / usage-graph aggregation.
 //!
-//! Frontendへ詳細イベント全件を渡さず、SQLite側で期間・系列ごとに集計する。
+//! Frontendへ詳細ショートカット履歴全件を渡さず、SQLite側で期間・系列ごとに集計する。
 
 use std::collections::HashMap;
 
