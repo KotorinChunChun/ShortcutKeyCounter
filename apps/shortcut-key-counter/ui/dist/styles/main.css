@@ -100,6 +100,12 @@
   .setting-row:last-child { border-bottom:0; }
   .setting-row strong { font-size:13px; display:block; margin-bottom:4px; }
   .setting-row span { color:var(--muted); font-size:11px; }
+  .setting-label-with-help { position:relative; display:flex; align-items:center; gap:6px; margin-bottom:4px; }
+  .setting-label-with-help strong { margin-bottom:0; }
+  .help-tooltip-trigger { width:18px; height:18px; padding:0; border:1px solid var(--muted); border-radius:50%; background:transparent; color:var(--muted); font-size:11px; line-height:16px; cursor:help; }
+  .help-tooltip-trigger:hover, .help-tooltip-trigger:focus-visible { border-color:var(--accent); color:var(--accent-2); outline:none; }
+  .help-tooltip { position:absolute; left:0; top:calc(100% + 8px); width:min(440px,calc(100vw - 56px)); padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--panel-2); box-shadow:var(--shadow); color:var(--text) !important; font-size:11px !important; line-height:1.6; opacity:0; visibility:hidden; pointer-events:none; transform:translateY(-4px); transition:opacity .15s ease,transform .15s ease,visibility .15s ease; z-index:30; }
+  .setting-label-with-help:hover .help-tooltip, .help-tooltip-trigger:focus-visible + .help-tooltip { opacity:1; visibility:visible; transform:translateY(0); }
   .switch { width:42px; height:23px; border-radius:99px; background:#263241; position:relative; cursor:pointer; transition:.2s; flex:0 0 auto; }
   .switch::after { content:""; width:17px; height:17px; border-radius:50%; background:#fff; position:absolute; left:3px; top:3px; transition:.2s; }
   .switch.on { background:var(--accent); }
