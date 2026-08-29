@@ -993,6 +993,12 @@ function updateDailyExportSelectionSummary(): void {
   el('dailyExportCount').textContent = `${dailyExportSelected.size} / ${dailyExportApplications.length}件を選択中`
 }
 
+function createAnonymousExportName(): string {
+  const bytes = new Uint8Array(8)
+  window.crypto.getRandomValues(bytes)
+  return `匿名-${Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')}`
+}
+
 function renderDailyExportFilter(): void {
   const list = el<HTMLDivElement>('dailyExportList')
   list.innerHTML = dailyExportApplications.length
@@ -1021,6 +1027,16 @@ async function openDailyExportFilter(): Promise<void> {
     for (const application of dailyExportApplications) {
       if (saved === null || saved.includes(application)) dailyExportSelected.add(application)
     }
+    const startInput = el<HTMLInputElement>('dailyExportStartDate')
+    const endInput = el<HTMLInputElement>('dailyExportEndDate')
+    const today = todayText()
+    startInput.value = snapshot.first_date ?? today
+    endInput.value = snapshot.last_date ?? today
+    startInput.min = snapshot.first_date ?? ''
+    startInput.max = snapshot.last_date ?? ''
+    endInput.min = snapshot.first_date ?? ''
+    endInput.max = snapshot.last_date ?? ''
+    el<HTMLInputElement>('dailyExportName').value = snapshot.name
     renderDailyExportFilter()
   } catch (error) {
     modal.classList.remove('show')
@@ -1162,12 +1178,22 @@ function bindEvents(): void {
   el<HTMLButtonElement>('dailyExportClearAll').addEventListener('click', () => {
     dailyExportSelected.clear(); renderDailyExportFilter()
   })
+  el<HTMLButtonElement>('dailyExportAnonymous').addEventListener('click', () => {
+    const input = el<HTMLInputElement>('dailyExportName')
+    input.value = createAnonymousExportName()
+    input.focus()
+  })
   el<HTMLButtonElement>('cancelDailyExport').addEventListener('click', closeDailyExportFilter)
   el<HTMLButtonElement>('confirmDailyExport').addEventListener('click', event => void withButton(event.currentTarget as HTMLButtonElement, async () => {
     const applications = [...dailyExportSelected]
+    const startDate = el<HTMLInputElement>('dailyExportStartDate').value
+    const endDate = el<HTMLInputElement>('dailyExportEndDate').value
+    const name = el<HTMLInputElement>('dailyExportName').value.trim()
+    if (!startDate || !endDate) return showToast('開始日と終了日を指定してください。')
+    if (startDate > endDate) return showToast('開始日は終了日以前にしてください。')
     if (!applications.length && !window.confirm('アプリが1件も選択されていません。ヘッダーだけのCSVを出力しますか？')) return
-    await api.setDailyExportFilter(applications)
-    const result = await api.exportDaily(applications)
+    await api.setDailyExportFilter(applications, name)
+    const result = await api.exportDaily(applications, startDate, endDate, name)
     closeDailyExportFilter()
     showToast(`${result.path} を出力しました（${result.rows}行）。`, { label: 'フォルダーを開く', run: () => api.openParentFolder(result.path) })
   }).catch(error => showToast(errorMessage(error))))

@@ -26,6 +26,8 @@ pub enum MaintenanceError {
     Io(#[from] io::Error),
     #[error("Downloadsフォルダーを解決できず、保存先も指定されていません: {0}")]
     DownloadsUnavailable(KnownFoldersError),
+    #[error("CSV出力期間が不正です")]
+    InvalidDateRange,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -86,7 +88,35 @@ pub fn export_daily_csv_filtered(
     output_directory: impl AsRef<Path>,
     applications: Option<&[String]>,
 ) -> Result<ExportResult, MaintenanceError> {
-    export_daily_csv_at(connection, output_directory.as_ref(), Local::now(), applications)
+    export_daily_csv_at(
+        connection,
+        output_directory.as_ref(),
+        Local::now(),
+        applications,
+        None,
+        None,
+        None,
+    )
+}
+
+/// アプリ・期間・出力名を指定してshortcut_dailyをCSVへ出力する。
+pub fn export_daily_csv_with_options(
+    connection: &Connection,
+    output_directory: impl AsRef<Path>,
+    applications: Option<&[String]>,
+    start_date: Option<NaiveDate>,
+    end_date: Option<NaiveDate>,
+    output_name: Option<&str>,
+) -> Result<ExportResult, MaintenanceError> {
+    export_daily_csv_at(
+        connection,
+        output_directory.as_ref(),
+        Local::now(),
+        applications,
+        start_date,
+        end_date,
+        output_name,
+    )
 }
 
 fn export_daily_csv_at(
@@ -94,36 +124,74 @@ fn export_daily_csv_at(
     output_directory: &Path,
     timestamp: DateTime<Local>,
     applications: Option<&[String]>,
+    start_date: Option<NaiveDate>,
+    end_date: Option<NaiveDate>,
+    output_name: Option<&str>,
 ) -> Result<ExportResult, MaintenanceError> {
-    let path = output_directory.join(format!(
-        "{DAILY_FILE_PREFIX}{}.csv",
-        timestamp.format("%Y%m%d_%H%M%S")
-    ));
+    if let (Some(start), Some(end)) = (start_date, end_date) {
+        if start > end {
+            return Err(MaintenanceError::InvalidDateRange);
+        }
+    }
+    let timestamp_text = timestamp.format("%Y%m%d_%H%M%S");
+    let name = sanitize_filename_component(output_name.unwrap_or_default());
+    let filename = if name.is_empty() {
+        format!("{DAILY_FILE_PREFIX}{timestamp_text}.csv")
+    } else {
+        format!("{DAILY_FILE_PREFIX}{name}_{timestamp_text}.csv")
+    };
+    let path = output_directory.join(filename);
     let rows = write_export_file(&path, |writer| {
         write_csv_record(writer, ["date", "shortcut", "application", "count"])?;
         let mut row_count = 0_u64;
         match applications {
             Some(applications) if applications.is_empty() => {}
             Some(applications) => {
+                let mut conditions = Vec::new();
+                let mut values = Vec::new();
+                if let Some(start) = start_date {
+                    conditions.push("date >= ?".to_owned());
+                    values.push(start.to_string());
+                }
+                if let Some(end) = end_date {
+                    conditions.push("date <= ?".to_owned());
+                    values.push(end.to_string());
+                }
                 let placeholders = std::iter::repeat("?")
                     .take(applications.len())
                     .collect::<Vec<_>>()
                     .join(",");
+                conditions.push(format!("application IN ({placeholders})"));
+                values.extend(applications.iter().cloned());
                 let sql = format!(
-                    "SELECT date, shortcut, application, count FROM shortcut_daily WHERE application IN ({placeholders}) ORDER BY date ASC, shortcut ASC, application ASC"
+                    "SELECT date, shortcut, application, count FROM shortcut_daily WHERE {} ORDER BY date ASC, shortcut ASC, application ASC",
+                    conditions.join(" AND ")
                 );
                 let mut statement = connection.prepare(&sql)?;
-                let mut result_rows = statement.query(rusqlite::params_from_iter(applications))?;
+                let mut result_rows = statement.query(rusqlite::params_from_iter(values.iter()))?;
                 while let Some(row) = result_rows.next()? {
                     write_daily_row(writer, row)?;
                     row_count += 1;
                 }
             }
             None => {
-                let mut statement = connection.prepare(
-                    "SELECT date, shortcut, application, count FROM shortcut_daily ORDER BY date ASC, shortcut ASC, application ASC",
-                )?;
-                let mut result_rows = statement.query([])?;
+                let mut conditions = Vec::new();
+                let mut values = Vec::new();
+                if let Some(start) = start_date {
+                    conditions.push("date >= ?".to_owned());
+                    values.push(start.to_string());
+                }
+                if let Some(end) = end_date {
+                    conditions.push("date <= ?".to_owned());
+                    values.push(end.to_string());
+                }
+                let sql = if conditions.is_empty() {
+                    "SELECT date, shortcut, application, count FROM shortcut_daily ORDER BY date ASC, shortcut ASC, application ASC".to_owned()
+                } else {
+                    format!("SELECT date, shortcut, application, count FROM shortcut_daily WHERE {} ORDER BY date ASC, shortcut ASC, application ASC", conditions.join(" AND "))
+                };
+                let mut statement = connection.prepare(&sql)?;
+                let mut result_rows = statement.query(rusqlite::params_from_iter(values.iter()))?;
                 while let Some(row) = result_rows.next()? {
                     write_daily_row(writer, row)?;
                     row_count += 1;
@@ -133,6 +201,24 @@ fn export_daily_csv_at(
         Ok(row_count)
     })?;
     Ok(ExportResult { path, rows })
+}
+
+fn sanitize_filename_component(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .filter(|character| !character.is_control())
+        .map(|character| {
+            if matches!(character, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') {
+                '_'
+            } else if character.is_whitespace() {
+                '_'
+            } else {
+                character
+            }
+        })
+        .take(80)
+        .collect()
 }
 
 fn write_daily_row(
@@ -411,7 +497,7 @@ mod tests {
     fn daily_csv_has_bom_header_filename_and_escaped_content() {
         let connection = fixture_connection();
         let directory = temp_directory("daily-csv");
-        let result = export_daily_csv_at(&connection, &directory, fixed_timestamp(), None).expect("CSV");
+        let result = export_daily_csv_at(&connection, &directory, fixed_timestamp(), None, None, None, None).expect("CSV");
         assert_eq!(result.rows, 2);
         assert_eq!(
             result.path.file_name().and_then(|name| name.to_str()),
@@ -435,6 +521,9 @@ mod tests {
             &directory,
             fixed_timestamp(),
             Some(&selected),
+            None,
+            None,
+            None,
         )
         .expect("filtered CSV");
         assert_eq!(result.rows, 1);
@@ -442,6 +531,25 @@ mod tests {
             .expect("UTF-8");
         assert!(content.contains("Code.exe"));
         assert!(!content.contains("Code,Test.exe"));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn daily_csv_filters_date_range_and_sanitizes_output_name() {
+        let connection = fixture_connection();
+        let directory = temp_directory("daily-csv-options");
+        let result = export_daily_csv_with_options(
+            &connection,
+            &directory,
+            None,
+            Some(NaiveDate::from_ymd_opt(2026, 8, 14).expect("start")),
+            Some(NaiveDate::from_ymd_opt(2026, 8, 14).expect("end")),
+            Some("山田/集計"),
+        )
+        .expect("filtered CSV");
+        assert_eq!(result.rows, 0);
+        let file_name = result.path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        assert!(file_name.contains("山田_集計"));
         let _ = fs::remove_dir_all(directory);
     }
 

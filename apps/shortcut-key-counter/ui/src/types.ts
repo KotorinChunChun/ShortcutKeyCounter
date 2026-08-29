@@ -55,7 +55,7 @@ export interface ApplicationStats { application: string; count: number; unique_s
 export interface ShortcutDetail { shortcut: string; total_count: number; applications: RankedApplication[]; daily: DailyPoint[] }
 export interface ExcludedApp { id: number; executable_name: string; source: 'default' | 'user' | string; enabled: boolean }
 export interface ExportResult { path: string; rows: number }
-export interface DailyExportFilterSnapshot { applications: string[]; selected: string[] | null }
+export interface DailyExportFilterSnapshot { applications: string[]; selected: string[] | null; first_date: string | null; last_date: string | null; name: string }
 export interface BackupResult { path: string }
 export interface ClearResult { events_deleted: number; daily_deleted: number; usage_deleted: number }
 export interface DeleteBeforePreview { cutoff_date: string; events: number; daily_rows: number; usage_rows: number }

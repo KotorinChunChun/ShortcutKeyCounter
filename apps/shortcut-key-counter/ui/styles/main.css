@@ -116,6 +116,11 @@
   .modal-backdrop.show { display:grid; }
   .modal { width:min(460px,calc(100vw - 36px)); background:#131b25; border:1px solid var(--line); border-radius:14px; box-shadow:0 30px 70px rgba(0,0,0,.55); padding:20px; }
   .daily-export-modal { width:min(560px,calc(100vw - 36px)); }
+  .daily-export-fields { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:12px 0; }
+  .daily-export-fields label { display:flex; flex-direction:column; gap:5px; color:var(--muted); font-size:11px; }
+  .daily-export-name-field { grid-column:1 / -1; }
+  .daily-export-name-input { display:flex; gap:8px; }
+  .daily-export-name-input .input { flex:1 1 auto; min-width:0; }
   .daily-export-toolbar { display:flex; align-items:center; gap:8px; margin:12px 0 10px; }
   .daily-export-count { margin-left:auto; color:var(--muted); font-size:11px; }
   .daily-export-list { max-height:min(360px,50vh); overflow:auto; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; padding:4px; border:1px solid var(--line); border-radius:8px; background:#0e151e; }

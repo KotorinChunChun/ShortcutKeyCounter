@@ -462,6 +462,9 @@ pub fn set_overlay_key_labels(
 pub struct DailyExportFilterSnapshot {
     pub applications: Vec<String>,
     pub selected: Option<Vec<String>>,
+    pub first_date: Option<String>,
+    pub last_date: Option<String>,
+    pub name: String,
 }
 
 #[tauri::command]
@@ -699,21 +702,27 @@ pub fn get_daily_export_filter(
 ) -> Result<DailyExportFilterSnapshot, CommandError> {
     let db = db_lock(&state)?;
     let applications = command_api::list_daily_export_applications(&db).map_err(|_| CommandError::db())?;
+    let (first_date, last_date) = command_api::daily_export_date_bounds(&db).map_err(|_| CommandError::db())?;
     drop(db);
     let settings = settings_db_lock(&state)?;
     let selected = command_api::daily_export_applications(&settings)
         .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVのアプリ選択を読み込めませんでした。"))?;
-    Ok(DailyExportFilterSnapshot { applications, selected })
+    let name = command_api::daily_export_name(&settings)
+        .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVの出力名を読み込めませんでした。"))?;
+    Ok(DailyExportFilterSnapshot { applications, selected, first_date, last_date, name })
 }
 
 #[tauri::command]
 pub fn set_daily_export_filter(
     state: State<'_, AppState>,
     applications: Vec<String>,
+    name: String,
 ) -> Result<Vec<String>, CommandError> {
     let settings = settings_db_lock(&state)?;
     command_api::set_daily_export_applications_command(&settings, &applications)
         .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVのアプリ選択を保存できませんでした。"))?;
+    command_api::set_daily_export_name_command(&settings, &name)
+        .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVの出力名を保存できませんでした。"))?;
     Ok(applications)
 }
 
@@ -721,6 +730,9 @@ pub fn set_daily_export_filter(
 pub fn export_daily_csv(
     state: State<'_, AppState>,
     applications: Option<Vec<String>>,
+    start_date: Option<String>,
+    end_date: Option<String>,
+    name: Option<String>,
 ) -> Result<ExportResult, CommandError> {
     let directory = downloads_or_fallback(None).map_err(|_| {
         CommandError::new(
@@ -728,8 +740,15 @@ pub fn export_daily_csv(
             "Downloadsフォルダーを取得できませんでした。",
         )
     })?;
+    let start_date = start_date.as_deref().map(parse_date).transpose()?;
+    let end_date = end_date.as_deref().map(parse_date).transpose()?;
+    if let (Some(start), Some(end)) = (start_date, end_date) {
+        if start > end {
+            return Err(CommandError::new("INVALID_DATE_RANGE", "開始日は終了日以前にしてください。"));
+        }
+    }
     let db = db_lock(&state)?;
-    command_api::export_daily_csv_command(&db, directory, applications.as_deref())
+    command_api::export_daily_csv_command(&db, directory, applications.as_deref(), start_date, end_date, name.as_deref())
         .map_err(|_| CommandError::new("EXPORT_FAILED", "日次集計CSVを出力できませんでした。"))
 }
 

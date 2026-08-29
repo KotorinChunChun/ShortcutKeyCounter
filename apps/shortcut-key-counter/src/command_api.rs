@@ -22,8 +22,8 @@ use crate::capture_worker::SharedExcludedApps;
 use crate::exclusion_state::{reload_enabled_exclusions, ExclusionStateError};
 use crate::key_policy::KeyAction;
 use crate::maintenance::{
-    backup_database, backup_database_to_directory, clear_all_usage_data, export_daily_csv_filtered,
-    export_events_csv, BackupResult, ClearResult, ExportResult,
+    backup_database, backup_database_to_directory, clear_all_usage_data,
+    export_daily_csv_with_options, export_events_csv, BackupResult, ClearResult, ExportResult,
     MaintenanceError,
 };
 use crate::overlay::config::{
@@ -31,10 +31,10 @@ use crate::overlay::config::{
     OverlayPosition, OverlayPositionMode, RepeatCounterTheme,
 };
 use crate::settings::{
-    get_auto_start, get_capture_elevated, get_detail_event_retention_days,
-    get_duplicate_guard_seconds, get_overlay_enabled, get_theme, get_usage_tracking_enabled,
-    get_daily_export_applications, set_daily_export_applications,
-    set_auto_start, set_capture_elevated, set_detail_event_retention_days,
+    get_auto_start, get_capture_elevated, get_daily_export_applications, get_daily_export_name,
+    get_detail_event_retention_days, get_duplicate_guard_seconds, get_overlay_enabled, get_theme,
+    get_usage_tracking_enabled, set_auto_start, set_capture_elevated,
+    set_daily_export_applications, set_daily_export_name, set_detail_event_retention_days,
     set_duplicate_guard_seconds, set_theme, set_usage_tracking_enabled, SettingsError,
 };
 
@@ -350,8 +350,18 @@ pub fn export_daily_csv_command(
     connection: &Connection,
     output_directory: impl AsRef<std::path::Path>,
     applications: Option<&[String]>,
+    start_date: Option<NaiveDate>,
+    end_date: Option<NaiveDate>,
+    output_name: Option<&str>,
 ) -> Result<ExportResult, MaintenanceError> {
-    export_daily_csv_filtered(connection, output_directory, applications)
+    export_daily_csv_with_options(
+        connection,
+        output_directory,
+        applications,
+        start_date,
+        end_date,
+        output_name,
+    )
 }
 
 pub fn list_daily_export_applications(
@@ -364,10 +374,24 @@ pub fn list_daily_export_applications(
     rows.collect()
 }
 
+pub fn daily_export_date_bounds(
+    connection: &Connection,
+) -> Result<(Option<String>, Option<String>), rusqlite::Error> {
+    connection.query_row(
+        "SELECT MIN(date), MAX(date) FROM shortcut_daily",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+}
+
 pub fn daily_export_applications(
     connection: &Connection,
 ) -> Result<Option<Vec<String>>, SettingsError> {
     get_daily_export_applications(connection)
+}
+
+pub fn daily_export_name(connection: &Connection) -> Result<String, SettingsError> {
+    get_daily_export_name(connection)
 }
 
 pub fn set_daily_export_applications_command(
@@ -375,6 +399,13 @@ pub fn set_daily_export_applications_command(
     applications: &[String],
 ) -> Result<(), SettingsError> {
     set_daily_export_applications(connection, applications)
+}
+
+pub fn set_daily_export_name_command(
+    connection: &Connection,
+    name: &str,
+) -> Result<(), SettingsError> {
+    set_daily_export_name(connection, name)
 }
 
 pub fn export_events_csv_command(

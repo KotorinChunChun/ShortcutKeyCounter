@@ -11,6 +11,7 @@ pub const DUPLICATE_GUARD_SECONDS_KEY: &str = "duplicate_guard_seconds";
 pub const DETAIL_EVENT_RETENTION_DAYS_KEY: &str = "detail_event_retention_days";
 pub const USAGE_GRAPH_COLORS_KEY: &str = "usage_graph_colors";
 pub const DAILY_EXPORT_APPLICATIONS_KEY: &str = "daily_export_applications";
+pub const DAILY_EXPORT_NAME_KEY: &str = "daily_export_name";
 
 /// 初回起動時の設定を追加する。既存値は変更しない。
 pub fn seed_default_settings(connection: &Connection) -> Result<(), StorageError> {

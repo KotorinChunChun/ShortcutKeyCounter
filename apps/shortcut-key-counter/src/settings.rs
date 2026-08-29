@@ -5,7 +5,8 @@ use std::path::Path;
 use shortcut_storage::repositories::settings_repository::{
     get_setting, set_setting, AUTO_START_KEY, CAPTURE_ELEVATED_KEY,
     DETAIL_EVENT_RETENTION_DAYS_KEY, DUPLICATE_GUARD_SECONDS_KEY, OVERLAY_ENABLED_KEY, THEME_KEY,
-    DAILY_EXPORT_APPLICATIONS_KEY, USAGE_GRAPH_COLORS_KEY, USAGE_TRACKING_ENABLED_KEY,
+    DAILY_EXPORT_APPLICATIONS_KEY, DAILY_EXPORT_NAME_KEY, USAGE_GRAPH_COLORS_KEY,
+    USAGE_TRACKING_ENABLED_KEY,
 };
 use shortcut_storage::StorageError;
 use shortcut_windows::autostart::{
@@ -31,6 +32,8 @@ pub enum SettingsError {
     InvalidGraphColors,
     #[error("日次CSVアプリフィルターが不正です")]
     InvalidDailyExportApplications,
+    #[error("日次CSV出力名が不正です")]
+    InvalidDailyExportName,
 }
 
 pub fn get_auto_start(connection: &rusqlite::Connection) -> Result<bool, SettingsError> {
@@ -198,6 +201,23 @@ fn validate_daily_export_applications(applications: &[String]) -> Result<(), Set
     Ok(())
 }
 
+/// 日次集計CSVの前回出力名を取得する。
+pub fn get_daily_export_name(connection: &rusqlite::Connection) -> Result<String, SettingsError> {
+    Ok(get_setting(connection, DAILY_EXPORT_NAME_KEY)?.unwrap_or_default())
+}
+
+/// 日次集計CSVの出力名を保存する。実際のファイル名化は出力時に安全な文字へ正規化する。
+pub fn set_daily_export_name(
+    connection: &rusqlite::Connection,
+    name: &str,
+) -> Result<(), SettingsError> {
+    if name.chars().count() > 128 || name.chars().any(char::is_control) {
+        return Err(SettingsError::InvalidDailyExportName);
+    }
+    set_setting(connection, DAILY_EXPORT_NAME_KEY, name.trim())?;
+    Ok(())
+}
+
 fn is_hex_color(value: &str) -> bool {
     value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
@@ -339,6 +359,14 @@ mod tests {
             get_daily_export_applications(&connection).unwrap(),
             Some(vec!["A.exe".to_owned(), "B.exe".to_owned()])
         );
+    }
+
+    #[test]
+    fn daily_export_name_is_persisted() {
+        let connection = connection();
+        assert_eq!(get_daily_export_name(&connection).unwrap(), "");
+        set_daily_export_name(&connection, "山田の集計").expect("save output name");
+        assert_eq!(get_daily_export_name(&connection).unwrap(), "山田の集計");
     }
 
     #[test]
