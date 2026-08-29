@@ -1,13 +1,14 @@
 ShortcutKeyCounter v0.1.4
 ========================
 
-Windows上のショートカット利用をローカル集計する Rust + Tauri 2 アプリです。
+Windowsのバックグラウンドに常駐し、入力されたショートカットキーをキー別、アプリ別、時間軸でローカル集計する Rust + Tauri 2 アプリです。
+リアルタイムログ、ランキング、使用率グラフ、ヒートマップ、CSV出力、ショートカットキービジュアライズ機能を搭載しています。
 
 Download:
-  https://github.com/KotorinChunChun/ShortcutKeyCounter/releases/latest
+  https://github.com/KotorinChunChun/ShortcutKeyCounter/releases
 
 User Guide:
-  https://github.com/KotorinChunChun/ShortcutKeyCounter/blob/main/docs/users-guide.md
+  https://github.com/KotorinChunChun/ShortcutKeyCounter/blob/feature/v0.1.5/docs/users-guide.md
 
 Start:
   1. ZIPを展開します。
@@ -39,3 +40,8 @@ Data:
 
 重要:
 修飾なし単独入力の記録禁止はRuntime側のSecurity invariantです。UI/JSONを変更しても解除できません。
+計測・集計・CSV機能はネットワーク通信を行わず、計測データを外部へ自動送信しません。
+ただし、単独キー表示中の画面共有などでは入力が画面へ公開される可能性があります。パスワードや機密情報を入力する前に、画面共有、オーバーレイ、計測を停止してください。
+
+CSV共有:
+  CSVはExcel等で分析できます。共有は任意です。共有前に内容を確認・匿名化し、SQLite DBや未確認の詳細イベントCSVを公開しないでください。
