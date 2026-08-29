@@ -822,6 +822,7 @@ const modifierPatterns = [
 const keyActionOptions = [
     ['ignore', 'なし'], ['continue_display', '続けて表示'], ['display_break', '表示して改行'], ['record_and_display_break', '記録と表示改行'],
 ];
+let pendingBulkMappingChange = null;
 function keyCategory(name, virtualKey) {
     if (/^[A-Z0-9]$/.test(name))
         return ['alnum', 'アルファベット・数字'];
@@ -859,9 +860,9 @@ function renderKeyMapping(mapping, policy, labels) {
     el('keyboardLayout').value = labels.keyboard_layout;
     const head = el('keyPolicyMatrixHead');
     const body = el('keyPolicyMatrixBody');
-    head.innerHTML = `<tr><th class="key-code-col">キーコード</th><th class="key-name-col">テキス名</th><th class="key-label-col">オーバーレイ表示名</th><th class="key-category-col">分類</th>${modifierPatterns.map(pattern => `<th class="key-policy-pattern ${selectedModifierColumns.has(pattern.id) ? 'selected-column' : ''}" data-pattern="${pattern.id}" title="クリックで一括変更対象列を選択">${escapeHtml(pattern.label)}</th>`).join('')}</tr>`;
+    head.innerHTML = `<tr><th class="key-category-col">分類</th><th class="key-code-col">キーコード</th><th class="key-name-col">テキス名</th><th class="key-label-col">キー表示名</th>${modifierPatterns.map(pattern => `<th class="key-policy-pattern ${selectedModifierColumns.has(pattern.id) ? 'selected-column' : ''}" data-pattern="${pattern.id}" title="クリックで一括変更対象列を選択">${escapeHtml(pattern.label)}</th>`).join('')}</tr>`;
     const rows = policyRows(mapping);
-    body.innerHTML = rows.map(row => `<tr data-category="${row.category}" data-key="${escapeHtml(row.key)}"><td class="key-code-col key-code-text">${escapeHtml(row.code)}</td><th class="key-name-col">${escapeHtml(row.label)}</th><td class="key-label-col"><input class="input key-label-input" data-key-label="${escapeHtml(row.key)}" value="${escapeHtml(labels.keys[row.key] ?? row.key)}" /></td><td class="key-category-col"><span class="category-pill">${escapeHtml(row.categoryLabel)}</span></td>${modifierPatterns.map(pattern => {
+    body.innerHTML = rows.map(row => `<tr data-category="${row.category}" data-key="${escapeHtml(row.key)}"><td class="key-category-col"><span class="category-pill">${escapeHtml(row.categoryLabel)}</span></td><td class="key-code-col key-code-text">${escapeHtml(row.code)}</td><th class="key-name-col">${escapeHtml(row.label)}</th><td class="key-label-col"><input class="input key-label-input" data-key-label="${escapeHtml(row.key)}" value="${escapeHtml(labels.keys[row.key] ?? row.key)}" /></td>${modifierPatterns.map(pattern => {
         const identity = policyIdentity(pattern, row.key);
         const fallback = defaultPolicyAction(policy, pattern);
         const selected = policy.overrides[identity] ?? fallback;
@@ -870,6 +871,7 @@ function renderKeyMapping(mapping, policy, labels) {
     }).join('')}</tr>`).join('');
     applyMappingFilters();
     updateMappingSummary();
+    syncBulkActionOffset();
 }
 function mappingFromUi() {
     return structuredClone(currentKeyMapping ?? { version: 1, keyboard: [], mouse: { left_click: true, right_click: true, middle_click: true, x1_click: true, x2_click: true, wheel_up: true, wheel_down: true, wheel_left: true, wheel_right: true } });
@@ -905,19 +907,55 @@ function applyMappingFilters() {
     document.querySelectorAll('#keyPolicyMatrixBody tr[data-category]').forEach(row => row.classList.toggle('mapping-hidden', !activeMappingCategories.has(row.dataset.category ?? '')));
     updateMappingSummary();
 }
+function syncBulkActionOffset() {
+    const wrapper = document.querySelector('.key-policy-matrix-wrap');
+    const toolbar = el('mappingBulkActions');
+    const noneHeader = document.querySelector('#keyPolicyMatrixHead [data-pattern="none"]');
+    if (!wrapper || !noneHeader)
+        return;
+    // The action bar lives in the same horizontal scroll container as the matrix;
+    // following the measured "なし" column keeps it aligned through resize/scroll.
+    toolbar.style.paddingLeft = `${Math.max(0, noneHeader.offsetLeft)}px`;
+}
 function updateMappingSelectionStyles() {
     document.querySelectorAll('[data-pattern], [data-pattern-cell]').forEach(node => {
         const id = node.dataset.pattern ?? node.dataset.patternCell ?? '';
         node.classList.toggle('selected-column', selectedModifierColumns.has(id));
     });
     const summary = el('mappingSelectedColumns');
+    // The selection count is intentionally not persistent UI; the message only
+    // appears after an action is attempted without a selected modifier column.
+    summary.hidden = true;
     summary.classList.toggle('error', selectedModifierColumns.size === 0);
-    summary.textContent = selectedModifierColumns.size
-        ? `選択列: ${selectedModifierColumns.size}列。列見出しをクリックして複数選択できます。`
-        : '列を選択してください。列見出しをクリックして複数選択できます。';
+    summary.textContent = '列を選択してください。列見出しをクリックして複数選択できます。';
 }
 function updateMappingSummary() {
     updateMappingSelectionStyles();
+}
+function showMappingSelectionMessage(message) {
+    const summary = el('mappingSelectedColumns');
+    summary.textContent = message;
+    summary.hidden = false;
+    window.setTimeout(() => { if (selectedModifierColumns.size > 0)
+        summary.hidden = true; }, 2800);
+}
+function applyBulkMappingChange() {
+    const pending = pendingBulkMappingChange;
+    pendingBulkMappingChange = null;
+    el('bulkMappingModal').classList.remove('show');
+    if (!pending)
+        return;
+    for (const row of pending.rows)
+        for (const pattern of pending.patterns) {
+            const select = row.querySelector(`select[data-pattern="${pattern.id}"]`);
+            if (!select)
+                continue;
+            if (pending.action === 'reset')
+                select.value = select.dataset.policyDefault ?? (pattern.id === 'none' ? 'continue_display' : 'record_and_display_break');
+            else
+                select.value = pattern.id === 'none' ? safeSingleAction(pending.action) : pending.action;
+        }
+    updateMappingSummary();
 }
 function bulkMappingChange(action) {
     const rows = visibleMappingRows();
@@ -925,27 +963,14 @@ function bulkMappingChange(action) {
     if (!rows.length)
         return showToast('現在表示中のキーがありません。');
     if (!patterns.length)
-        return showToast('一括変更する修飾パターン列を見出しから選択してください。');
+        return showMappingSelectionMessage('一括変更する修飾パターン列を見出しから選択してください。');
     const operation = action === 'continue_display' ? '続けて表示' : action === 'record_and_display_break' ? '記録と表示改行' : action === 'ignore' ? 'すべて非表示' : action === 'reset' ? '既定に戻す' : 'すべて表示';
     const cells = rows.length * patterns.length;
-    if (!window.confirm(`${operation}を実行しますか？
-対象行: ${rows.length}
-選択列: ${patterns.map(p => p.label).join(', ')}
-変更セル数: ${cells}
-
-この操作は多数の設定を変更します。`))
-        return;
-    for (const row of rows)
-        for (const pattern of patterns) {
-            const select = row.querySelector(`select[data-pattern="${pattern.id}"]`);
-            if (!select)
-                continue;
-            if (action === 'reset')
-                select.value = select.dataset.policyDefault ?? (pattern.id === 'none' ? 'continue_display' : 'record_and_display_break');
-            else
-                select.value = pattern.id === 'none' ? safeSingleAction(action) : action;
-        }
-    updateMappingSummary();
+    pendingBulkMappingChange = { action, rows, patterns };
+    el('bulkMappingConfirmation').innerHTML = `<strong>${escapeHtml(operation)}</strong>を実行しますか？<br>対象行: ${rows.length}<br>選択列: ${escapeHtml(patterns.map(p => p.label).join(', '))}<br>変更セル数: ${cells}<br><span>実行するまで設定は変更されません。</span>`;
+    const modal = el('bulkMappingModal');
+    modal.classList.add('show');
+    el('cancelBulkMapping').focus();
 }
 async function loadKeyMapping() {
     const [mapping, policy, labels] = await Promise.all([api.keyMapping(), api.overlayKeyPolicy(), api.overlayKeyLabels()]);
@@ -1792,8 +1817,23 @@ function bindEvents() {
         const result = await api.exportKeyMapping();
         showToast(`${result.path} を出力しました。`, { label: 'フォルダーを開く', run: () => api.openParentFolder(result.path) });
     }).catch(error => showToast(errorMessage(error))));
-    window.addEventListener('resize', () => { if (activePage === 'usage')
-        drawUsageGraph(); });
+    window.addEventListener('resize', () => {
+        if (activePage === 'usage')
+            drawUsageGraph();
+        if (activePage === 'key-mapping')
+            syncBulkActionOffset();
+    });
+    el('cancelBulkMapping').addEventListener('click', () => {
+        pendingBulkMappingChange = null;
+        el('bulkMappingModal').classList.remove('show');
+    });
+    el('confirmBulkMapping').addEventListener('click', applyBulkMappingChange);
+    el('bulkMappingModal').addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            el('cancelBulkMapping').click();
+        }
+    });
     el('openGithub').addEventListener('click', async () => {
         try {
             await loadHelp();

@@ -107,11 +107,19 @@
 
       <section class="page" id="key-mapping">
         <div class="page-head"><div><h2>キーマッピング</h2><p>キーごとの表示・記録ポリシーを修飾パターン別に編集します。</p></div><div class="toolbar"><label class="mapping-layout-control" for="keyboardLayout">キーボード種類<select class="select" id="keyboardLayout"><option value="japanese-109">日本語 109キー</option><option value="us-104">英語 104キー</option></select></label><button class="btn primary" id="mappingSave">保存</button><button class="btn" id="mappingExport">JSON出力</button></div></div>
-        <div class="mapping-controls-v014 section">
-          <div class="mapping-control-box"><strong>分類フィルター</strong><div class="choice-group" id="mappingCategoryFilter"><button type="button" class="active" data-category="alnum">アルファベット・数字</button><button type="button" class="active" data-category="modifier">修飾キー</button><button type="button" class="active" data-category="function">ファンクションキー</button><button type="button" class="active" data-category="system">システム・その他</button></div></div>
-          <div class="mapping-control-box"><strong>一括変更</strong><div class="toolbar"><button class="btn" id="mappingEnableAll">すべて表示</button><button class="btn" id="mappingContinueDisplay">続けて表示</button><button class="btn" id="mappingRecordDisplay">記録と表示改行</button><button class="btn" id="mappingDisableAll">すべて非表示</button><button class="btn" id="mappingReset">既定に戻す</button></div><div class="mapping-selection-message error" id="mappingSelectedColumns">列を選択してください。列見出しをクリックして複数選択できます。</div></div>
+        <div class="mapping-top-controls section">
+          <button class="btn" id="mappingKeySearch">⌨ キーを入力して検索</button>
+          <div class="choice-group mapping-category-toggles" id="mappingCategoryFilter" aria-label="分類フィルター">
+            <button type="button" class="active" data-category="alnum">アルファベット・数字</button><button type="button" class="active" data-category="modifier">修飾キー</button><button type="button" class="active" data-category="function">ファンクションキー</button><button type="button" class="active" data-category="system">システム・その他</button>
+          </div>
         </div>
-        <div class="panel keymap-panel"><div class="panel-head"><div><h3>全キー × 修飾キーパターン</h3></div><button class="btn" id="mappingKeySearch">⌨ キーを入力して検索</button></div><div class="matrix-wrap key-policy-matrix-wrap"><table class="table key-policy-matrix"><thead id="keyPolicyMatrixHead"></thead><tbody id="keyPolicyMatrixBody"></tbody></table></div></div>
+        <div class="panel keymap-panel"><div class="matrix-wrap key-policy-matrix-wrap">
+          <div class="mapping-bulk-actions" id="mappingBulkActions">
+            <button class="btn" id="mappingEnableAll" type="button">すべて表示</button><button class="btn" id="mappingContinueDisplay" type="button">続けて表示</button><button class="btn" id="mappingRecordDisplay" type="button">記録と表示改行</button><button class="btn" id="mappingDisableAll" type="button">すべて非表示</button><button class="btn" id="mappingReset" type="button">既定に戻す</button>
+            <span class="mapping-selection-message error" id="mappingSelectedColumns" role="status" aria-live="polite" hidden>列を選択してください。</span>
+          </div>
+          <table class="table key-policy-matrix"><thead id="keyPolicyMatrixHead"></thead><tbody id="keyPolicyMatrixBody"></tbody></table>
+        </div></div>
       </section>
 
       <section class="page" id="excluded">
@@ -192,6 +200,7 @@
 </div>
 
 <div class="modal-backdrop" id="dailyExportModal"><div class="modal daily-export-modal" role="dialog" aria-modal="true" aria-labelledby="dailyExportTitle"><h3 id="dailyExportTitle">日次集計CSVの出力条件</h3><p>期間、出力名、対象アプリを指定してください。アプリ選択と出力名は保存され、次回以降も引き継がれます。</p><div class="daily-export-fields"><label for="dailyExportStartDate">開始日<input class="input" id="dailyExportStartDate" type="date"></label><label for="dailyExportEndDate">終了日<input class="input" id="dailyExportEndDate" type="date"></label><label class="daily-export-name-field" for="dailyExportName">ファイル名に含める名前<div class="daily-export-name-input"><input class="input" id="dailyExportName" type="text" maxlength="128" placeholder="任意の名前または匿名"><button class="btn ghost" id="dailyExportAnonymous" type="button">匿名</button></div></label></div><div class="daily-export-toolbar"><button class="btn ghost" id="dailyExportSelectAll" type="button">すべてチェック</button><button class="btn ghost" id="dailyExportClearAll" type="button">すべて解除</button><span class="daily-export-count" id="dailyExportCount"></span></div><div class="daily-export-list" id="dailyExportList"></div><div class="modal-actions"><button class="btn" id="cancelDailyExport" type="button">キャンセル</button><button class="btn primary" id="confirmDailyExport" type="button">選択した条件でCSV出力</button></div></div></div>
+<div class="modal-backdrop" id="bulkMappingModal"><div class="modal bulk-mapping-modal" role="dialog" aria-modal="true" aria-labelledby="bulkMappingTitle"><h3 id="bulkMappingTitle">一括変更の確認</h3><p class="bulk-mapping-confirmation" id="bulkMappingConfirmation"></p><div class="modal-actions"><button class="btn" id="cancelBulkMapping" type="button">キャンセル</button><button class="btn primary" id="confirmBulkMapping" type="button">実行</button></div></div></div>
 <div class="modal-backdrop" id="deleteModal"><div class="modal"><h3>統計データをすべて削除しますか？</h3><p>詳細ショートカット履歴・日次集計・アプリ利用時間が選択中DBから削除されます。この操作は元に戻せません。設定と除外アプリ設定は保持されます。</p><div class="modal-actions"><button class="btn" id="cancelDelete">キャンセル</button><button class="btn danger" id="confirmDelete">削除する</button></div></div></div>
 <div class="modal-backdrop" id="elevatedModal"><div class="modal"><h3>管理者権限モードを有効にしますか？</h3><p>管理者権限で動作するアプリ上のショートカット取得のため、入力取得専用プロセス ShortcutKeyCapture.exe をUAC昇格して起動します。UIとDB処理は通常権限のままです。</p><div class="modal-actions"><button class="btn" id="cancelElevated">キャンセル</button><button class="btn primary" id="confirmElevated">有効にする</button></div></div></div>
 <div class="toast" id="toast"><span id="toastText"></span><button class="btn toast-action" id="toastAction">フォルダーを開く</button></div>
