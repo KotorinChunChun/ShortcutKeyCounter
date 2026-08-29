@@ -22,8 +22,9 @@ use crate::capture_worker::SharedExcludedApps;
 use crate::exclusion_state::{reload_enabled_exclusions, ExclusionStateError};
 use crate::key_policy::KeyAction;
 use crate::maintenance::{
-    backup_database, backup_database_to_directory, clear_all_usage_data, export_daily_csv,
-    export_events_csv, BackupResult, ClearResult, ExportResult, MaintenanceError,
+    backup_database, backup_database_to_directory, clear_all_usage_data, export_daily_csv_filtered,
+    export_events_csv, BackupResult, ClearResult, ExportResult,
+    MaintenanceError,
 };
 use crate::overlay::config::{
     OverlayConfig, OverlayDisplayMode, OverlayInAnimation, OverlayMonitorMode, OverlayOutAnimation,
@@ -32,6 +33,7 @@ use crate::overlay::config::{
 use crate::settings::{
     get_auto_start, get_capture_elevated, get_detail_event_retention_days,
     get_duplicate_guard_seconds, get_overlay_enabled, get_theme, get_usage_tracking_enabled,
+    get_daily_export_applications, set_daily_export_applications,
     set_auto_start, set_capture_elevated, set_detail_event_retention_days,
     set_duplicate_guard_seconds, set_theme, set_usage_tracking_enabled, SettingsError,
 };
@@ -347,8 +349,32 @@ pub fn set_detail_event_retention_days_command(
 pub fn export_daily_csv_command(
     connection: &Connection,
     output_directory: impl AsRef<std::path::Path>,
+    applications: Option<&[String]>,
 ) -> Result<ExportResult, MaintenanceError> {
-    export_daily_csv(connection, output_directory)
+    export_daily_csv_filtered(connection, output_directory, applications)
+}
+
+pub fn list_daily_export_applications(
+    connection: &Connection,
+) -> Result<Vec<String>, rusqlite::Error> {
+    let mut statement = connection.prepare(
+        "SELECT DISTINCT application FROM shortcut_daily WHERE application <> '' ORDER BY application COLLATE NOCASE",
+    )?;
+    let rows = statement.query_map([], |row| row.get::<_, String>(0))?;
+    rows.collect()
+}
+
+pub fn daily_export_applications(
+    connection: &Connection,
+) -> Result<Option<Vec<String>>, SettingsError> {
+    get_daily_export_applications(connection)
+}
+
+pub fn set_daily_export_applications_command(
+    connection: &Connection,
+    applications: &[String],
+) -> Result<(), SettingsError> {
+    set_daily_export_applications(connection, applications)
 }
 
 pub fn export_events_csv_command(

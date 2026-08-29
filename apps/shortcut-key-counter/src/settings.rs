@@ -5,13 +5,14 @@ use std::path::Path;
 use shortcut_storage::repositories::settings_repository::{
     get_setting, set_setting, AUTO_START_KEY, CAPTURE_ELEVATED_KEY,
     DETAIL_EVENT_RETENTION_DAYS_KEY, DUPLICATE_GUARD_SECONDS_KEY, OVERLAY_ENABLED_KEY, THEME_KEY,
-    USAGE_GRAPH_COLORS_KEY, USAGE_TRACKING_ENABLED_KEY,
+    DAILY_EXPORT_APPLICATIONS_KEY, USAGE_GRAPH_COLORS_KEY, USAGE_TRACKING_ENABLED_KEY,
 };
 use shortcut_storage::StorageError;
 use shortcut_windows::autostart::{
     autostart_command, disable_autostart, enable_autostart, read_autostart_command, AutostartError,
 };
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -28,6 +29,8 @@ pub enum SettingsError {
     InvalidNumber(String),
     #[error("グラフ色設定が不正です")]
     InvalidGraphColors,
+    #[error("日次CSVアプリフィルターが不正です")]
+    InvalidDailyExportApplications,
 }
 
 pub fn get_auto_start(connection: &rusqlite::Connection) -> Result<bool, SettingsError> {
@@ -158,6 +161,43 @@ pub fn set_usage_graph_colors(
     Ok(())
 }
 
+/// 日次集計CSVに含めるアプリの永続選択を取得する。未保存時は全アプリ対象を表すNone。
+pub fn get_daily_export_applications(
+    connection: &rusqlite::Connection,
+) -> Result<Option<Vec<String>>, SettingsError> {
+    let Some(raw) = get_setting(connection, DAILY_EXPORT_APPLICATIONS_KEY)? else {
+        return Ok(None);
+    };
+    let values = serde_json::from_str::<Vec<String>>(&raw)
+        .map_err(|_| SettingsError::InvalidDailyExportApplications)?;
+    validate_daily_export_applications(&values)?;
+    Ok(Some(values))
+}
+
+/// 日次集計CSVに含めるアプリの選択を重複除去・ソートして保存する。
+pub fn set_daily_export_applications(
+    connection: &rusqlite::Connection,
+    applications: &[String],
+) -> Result<(), SettingsError> {
+    validate_daily_export_applications(applications)?;
+    let normalized = applications.iter().cloned().collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
+    let raw = serde_json::to_string(&normalized)
+        .map_err(|_| SettingsError::InvalidDailyExportApplications)?;
+    set_setting(connection, DAILY_EXPORT_APPLICATIONS_KEY, &raw)?;
+    Ok(())
+}
+
+fn validate_daily_export_applications(applications: &[String]) -> Result<(), SettingsError> {
+    if applications.len() > 2_000
+        || applications
+            .iter()
+            .any(|application| application.is_empty() || application.len() > 512)
+    {
+        return Err(SettingsError::InvalidDailyExportApplications);
+    }
+    Ok(())
+}
+
 fn is_hex_color(value: &str) -> bool {
     value.len() == 7 && value.starts_with('#') && value[1..].chars().all(|c| c.is_ascii_hexdigit())
 }
@@ -284,6 +324,21 @@ mod tests {
         colors.insert("key:Ctrl+C".to_owned(), "#2563eb".to_owned());
         set_usage_graph_colors(&connection, &colors).unwrap();
         assert_eq!(get_usage_graph_colors(&connection).unwrap(), colors);
+    }
+
+    #[test]
+    fn daily_export_applications_are_persisted_sorted_and_deduplicated() {
+        let connection = connection();
+        assert_eq!(get_daily_export_applications(&connection).unwrap(), None);
+        set_daily_export_applications(
+            &connection,
+            &["B.exe".to_owned(), "A.exe".to_owned(), "B.exe".to_owned()],
+        )
+        .expect("save app filter");
+        assert_eq!(
+            get_daily_export_applications(&connection).unwrap(),
+            Some(vec!["A.exe".to_owned(), "B.exe".to_owned()])
+        );
     }
 
     #[test]

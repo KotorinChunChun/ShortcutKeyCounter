@@ -159,6 +159,8 @@ fn main() {
             tauri_commands::preview_delete_yesterday_and_earlier,
             tauri_commands::delete_yesterday_and_earlier,
             tauri_commands::export_daily_csv,
+            tauri_commands::get_daily_export_filter,
+            tauri_commands::set_daily_export_filter,
             tauri_commands::export_events_csv,
             tauri_commands::backup_database,
             tauri_commands::delete_all_statistics,

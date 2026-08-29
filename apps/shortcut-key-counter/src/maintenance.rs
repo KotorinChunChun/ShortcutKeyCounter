@@ -77,13 +77,23 @@ pub fn export_daily_csv(
     connection: &Connection,
     output_directory: impl AsRef<Path>,
 ) -> Result<ExportResult, MaintenanceError> {
-    export_daily_csv_at(connection, output_directory.as_ref(), Local::now())
+    export_daily_csv_filtered(connection, output_directory, None)
+}
+
+/// 指定したアプリだけをshortcut_dailyからCSVへ出力する。Noneは全アプリを表す。
+pub fn export_daily_csv_filtered(
+    connection: &Connection,
+    output_directory: impl AsRef<Path>,
+    applications: Option<&[String]>,
+) -> Result<ExportResult, MaintenanceError> {
+    export_daily_csv_at(connection, output_directory.as_ref(), Local::now(), applications)
 }
 
 fn export_daily_csv_at(
     connection: &Connection,
     output_directory: &Path,
     timestamp: DateTime<Local>,
+    applications: Option<&[String]>,
 ) -> Result<ExportResult, MaintenanceError> {
     let path = output_directory.join(format!(
         "{DAILY_FILE_PREFIX}{}.csv",
@@ -91,32 +101,53 @@ fn export_daily_csv_at(
     ));
     let rows = write_export_file(&path, |writer| {
         write_csv_record(writer, ["date", "shortcut", "application", "count"])?;
-        let mut statement = connection.prepare(
-            "SELECT date, shortcut, application, count
-             FROM shortcut_daily
-             ORDER BY date ASC, shortcut ASC, application ASC",
-        )?;
-        let mut result_rows = statement.query([])?;
         let mut row_count = 0_u64;
-        while let Some(row) = result_rows.next()? {
-            let date: String = row.get(0)?;
-            let shortcut: String = row.get(1)?;
-            let application: String = row.get(2)?;
-            let count: i64 = row.get(3)?;
-            write_csv_record(
-                writer,
-                [
-                    date.as_str(),
-                    shortcut.as_str(),
-                    application.as_str(),
-                    &count.to_string(),
-                ],
-            )?;
-            row_count += 1;
+        match applications {
+            Some(applications) if applications.is_empty() => {}
+            Some(applications) => {
+                let placeholders = std::iter::repeat("?")
+                    .take(applications.len())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let sql = format!(
+                    "SELECT date, shortcut, application, count FROM shortcut_daily WHERE application IN ({placeholders}) ORDER BY date ASC, shortcut ASC, application ASC"
+                );
+                let mut statement = connection.prepare(&sql)?;
+                let mut result_rows = statement.query(rusqlite::params_from_iter(applications))?;
+                while let Some(row) = result_rows.next()? {
+                    write_daily_row(writer, row)?;
+                    row_count += 1;
+                }
+            }
+            None => {
+                let mut statement = connection.prepare(
+                    "SELECT date, shortcut, application, count FROM shortcut_daily ORDER BY date ASC, shortcut ASC, application ASC",
+                )?;
+                let mut result_rows = statement.query([])?;
+                while let Some(row) = result_rows.next()? {
+                    write_daily_row(writer, row)?;
+                    row_count += 1;
+                }
+            }
         }
         Ok(row_count)
     })?;
     Ok(ExportResult { path, rows })
+}
+
+fn write_daily_row(
+    writer: &mut BufWriter<File>,
+    row: &rusqlite::Row<'_>,
+) -> Result<(), MaintenanceError> {
+    let date: String = row.get(0)?;
+    let shortcut: String = row.get(1)?;
+    let application: String = row.get(2)?;
+    let count: i64 = row.get(3)?;
+    write_csv_record(
+        writer,
+        [date.as_str(), shortcut.as_str(), application.as_str(), &count.to_string()],
+    )?;
+    Ok(())
 }
 
 /// shortcut_eventsをUTF-8 BOM付きCSVへストリーミング出力する。
@@ -380,7 +411,7 @@ mod tests {
     fn daily_csv_has_bom_header_filename_and_escaped_content() {
         let connection = fixture_connection();
         let directory = temp_directory("daily-csv");
-        let result = export_daily_csv_at(&connection, &directory, fixed_timestamp()).expect("CSV");
+        let result = export_daily_csv_at(&connection, &directory, fixed_timestamp(), None).expect("CSV");
         assert_eq!(result.rows, 2);
         assert_eq!(
             result.path.file_name().and_then(|name| name.to_str()),
@@ -391,6 +422,26 @@ mod tests {
         let content = String::from_utf8(bytes[3..].to_vec()).expect("UTF-8");
         assert!(content.starts_with("date,shortcut,application,count\r\n"));
         assert!(content.contains("2026-08-15,Ctrl+V,\"Code,Test.exe\",1\r\n"));
+        let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn daily_csv_filters_selected_applications() {
+        let connection = fixture_connection();
+        let directory = temp_directory("daily-csv-filter");
+        let selected = vec!["Code.exe".to_owned()];
+        let result = export_daily_csv_at(
+            &connection,
+            &directory,
+            fixed_timestamp(),
+            Some(&selected),
+        )
+        .expect("filtered CSV");
+        assert_eq!(result.rows, 1);
+        let content = String::from_utf8(fs::read(&result.path).expect("CSV bytes")[3..].to_vec())
+            .expect("UTF-8");
+        assert!(content.contains("Code.exe"));
+        assert!(!content.contains("Code,Test.exe"));
         let _ = fs::remove_dir_all(directory);
     }
 

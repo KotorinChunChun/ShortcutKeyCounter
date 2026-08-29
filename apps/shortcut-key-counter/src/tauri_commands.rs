@@ -458,6 +458,12 @@ pub fn set_overlay_key_labels(
         .map_err(|_| CommandError::new("KEY_LABELS_FAILED", "表示名を保存できませんでした。"))
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct DailyExportFilterSnapshot {
+    pub applications: Vec<String>,
+    pub selected: Option<Vec<String>>,
+}
+
 #[tauri::command]
 pub fn set_overlay_keyboard_layout(
     state: State<'_, AppState>,
@@ -688,7 +694,34 @@ pub fn delete_yesterday_and_earlier(
 }
 
 #[tauri::command]
-pub fn export_daily_csv(state: State<'_, AppState>) -> Result<ExportResult, CommandError> {
+pub fn get_daily_export_filter(
+    state: State<'_, AppState>,
+) -> Result<DailyExportFilterSnapshot, CommandError> {
+    let db = db_lock(&state)?;
+    let applications = command_api::list_daily_export_applications(&db).map_err(|_| CommandError::db())?;
+    drop(db);
+    let settings = settings_db_lock(&state)?;
+    let selected = command_api::daily_export_applications(&settings)
+        .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVのアプリ選択を読み込めませんでした。"))?;
+    Ok(DailyExportFilterSnapshot { applications, selected })
+}
+
+#[tauri::command]
+pub fn set_daily_export_filter(
+    state: State<'_, AppState>,
+    applications: Vec<String>,
+) -> Result<Vec<String>, CommandError> {
+    let settings = settings_db_lock(&state)?;
+    command_api::set_daily_export_applications_command(&settings, &applications)
+        .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVのアプリ選択を保存できませんでした。"))?;
+    Ok(applications)
+}
+
+#[tauri::command]
+pub fn export_daily_csv(
+    state: State<'_, AppState>,
+    applications: Option<Vec<String>>,
+) -> Result<ExportResult, CommandError> {
     let directory = downloads_or_fallback(None).map_err(|_| {
         CommandError::new(
             "EXPORT_FAILED",
@@ -696,7 +729,7 @@ pub fn export_daily_csv(state: State<'_, AppState>) -> Result<ExportResult, Comm
         )
     })?;
     let db = db_lock(&state)?;
-    command_api::export_daily_csv_command(&db, directory)
+    command_api::export_daily_csv_command(&db, directory, applications.as_deref())
         .map_err(|_| CommandError::new("EXPORT_FAILED", "日次集計CSVを出力できませんでした。"))
 }
 

@@ -4,7 +4,8 @@ import type {
   RankedShortcut, SettingsSnapshot, ShortcutDetail, ShortcutRankingRow, KeyMapping,
   KeyMappingExportResult, RealtimeLogEntry, AppInfo, Theme, OverlaySettings, KeyPolicy,
   OverlayMonitor, OverlayKeyLabels, KeyboardLayout, DatabaseEnvironment, DatabaseEnvironmentSnapshot, SampleSourceStatus,
-  SampleGenerationResult, DeleteBeforePreview, RankingsSnapshot, UsageGraphSnapshot, AnalyticsRangeKey
+  SampleGenerationResult, DeleteBeforePreview, RankingsSnapshot, UsageGraphSnapshot, AnalyticsRangeKey,
+  DailyExportFilterSnapshot
 } from './types.js'
 
 declare global {
@@ -72,7 +73,9 @@ export const api = {
   pollKeySearch: () => invoke<string | null>('poll_key_search'),
   cancelKeySearch: () => invoke<void>('cancel_key_search'),
   setCaptureElevated: (enabled: boolean) => invoke<SettingsSnapshot>('set_capture_elevated', { enabled }),
-  exportDaily: () => invoke<ExportResult>('export_daily_csv'),
+  getDailyExportFilter: () => invoke<DailyExportFilterSnapshot>('get_daily_export_filter'),
+  setDailyExportFilter: (applications: string[]) => invoke<string[]>('set_daily_export_filter', { applications }),
+  exportDaily: (applications?: string[]) => invoke<ExportResult>('export_daily_csv', { applications }),
   exportEvents: () => invoke<ExportResult>('export_events_csv'),
   databaseEnvironment: () => invoke<DatabaseEnvironmentSnapshot>('get_database_environment'),
   switchDatabaseEnvironment: (environment: DatabaseEnvironment) => invoke<DatabaseEnvironmentSnapshot>('switch_database_environment', { environment }),

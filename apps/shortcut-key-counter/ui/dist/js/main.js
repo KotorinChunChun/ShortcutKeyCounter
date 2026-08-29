@@ -35,6 +35,8 @@ let usageRange = 'today';
 let usageIdentities = [];
 const usageEnabled = new Set();
 let usageColors = {};
+let dailyExportApplications = [];
+const dailyExportSelected = new Set();
 let usageSnapshot = null;
 function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
@@ -1084,6 +1086,53 @@ async function loadDataManagement() {
     button.disabled = !environment.is_test || !source.can_generate;
     el('sampleSourceText').textContent = !environment.is_test ? 'サンプルデータは検証DBでのみ生成できます。' : source.can_generate ? `本番DBの実績を母集団に使用: アプリ ${source.application_count} / ショートカット ${source.shortcut_count}` : '元データとなるアプリ／ショートカット実績がありません。';
 }
+function updateDailyExportSelectionSummary() {
+    el('dailyExportCount').textContent = `${dailyExportSelected.size} / ${dailyExportApplications.length}件を選択中`;
+}
+function renderDailyExportFilter() {
+    const list = el('dailyExportList');
+    list.innerHTML = dailyExportApplications.length
+        ? dailyExportApplications.map(application => `<label class="daily-export-option"><input type="checkbox" data-daily-export-application="${escapeHtml(application)}" ${dailyExportSelected.has(application) ? 'checked' : ''}><span title="${escapeHtml(application)}">${escapeHtml(application)}</span></label>`).join('')
+        : '<div class="daily-export-empty">日次集計にアプリがありません。</div>';
+    list.querySelectorAll('input[data-daily-export-application]').forEach(input => input.addEventListener('change', () => {
+        const application = input.dataset.dailyExportApplication;
+        if (!application)
+            return;
+        if (input.checked)
+            dailyExportSelected.add(application);
+        else
+            dailyExportSelected.delete(application);
+        updateDailyExportSelectionSummary();
+    }));
+    updateDailyExportSelectionSummary();
+}
+async function openDailyExportFilter() {
+    const modal = el('dailyExportModal');
+    const confirm = el('confirmDailyExport');
+    confirm.disabled = true;
+    modal.classList.add('show');
+    try {
+        const snapshot = await api.getDailyExportFilter();
+        dailyExportApplications = snapshot.applications;
+        dailyExportSelected.clear();
+        const saved = snapshot.selected;
+        for (const application of dailyExportApplications) {
+            if (saved === null || saved.includes(application))
+                dailyExportSelected.add(application);
+        }
+        renderDailyExportFilter();
+    }
+    catch (error) {
+        modal.classList.remove('show');
+        showToast(errorMessage(error));
+    }
+    finally {
+        confirm.disabled = false;
+    }
+}
+function closeDailyExportFilter() {
+    el('dailyExportModal').classList.remove('show');
+}
 async function loadHelp() {
     appInfo ?? (appInfo = await api.appInfo());
     el('helpVersion').textContent = `v${appInfo.version}`;
@@ -1271,8 +1320,23 @@ function bindEvents() {
     });
     el('excludeInput').addEventListener('keydown', event => { if (event.key === 'Enter')
         el('addExclude').click(); });
-    el('exportDaily').addEventListener('click', event => void withButton(event.currentTarget, async () => {
-        const result = await api.exportDaily();
+    el('exportDaily').addEventListener('click', () => void openDailyExportFilter());
+    el('dailyExportSelectAll').addEventListener('click', () => {
+        dailyExportApplications.forEach(application => dailyExportSelected.add(application));
+        renderDailyExportFilter();
+    });
+    el('dailyExportClearAll').addEventListener('click', () => {
+        dailyExportSelected.clear();
+        renderDailyExportFilter();
+    });
+    el('cancelDailyExport').addEventListener('click', closeDailyExportFilter);
+    el('confirmDailyExport').addEventListener('click', event => void withButton(event.currentTarget, async () => {
+        const applications = [...dailyExportSelected];
+        if (!applications.length && !window.confirm('アプリが1件も選択されていません。ヘッダーだけのCSVを出力しますか？'))
+            return;
+        await api.setDailyExportFilter(applications);
+        const result = await api.exportDaily(applications);
+        closeDailyExportFilter();
         showToast(`${result.path} を出力しました（${result.rows}行）。`, { label: 'フォルダーを開く', run: () => api.openParentFolder(result.path) });
     }).catch(error => showToast(errorMessage(error))));
     el('exportEvents').addEventListener('click', event => void withButton(event.currentTarget, async () => {
