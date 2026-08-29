@@ -13,8 +13,10 @@
 | `docs/` | 利用者・ビルド担当者向けの版に依存しない手順 | `docs/<topic>.md` |
 | `dev/` | 現行版の要求、実装計画、進捗 | `vX.Y.Z-req.md` / `vX.Y.Z-imp.md` / `vX.Y.Z-task.md` |
 | `dev/` | プロジェクト共通の開発規約 | `project-rules.md` |
+| `dev/templates/` | 共通開発・リリーステンプレート | 原本のファイル名を維持する |
 | `dev/history/vX.Y.Z/` | 完了済み版の要求・実装・検証・報告 | 版付きファイル一式 |
 | `dev/history/vX.Y.Z/tasks/` | 旧版の細分化タスク | `NN-<topic>.md` |
+| `release/Publish/` | GitHub Releasesへ公開した配布成果物のローカル控え | Git追跡対象外 |
 
 版付き資料を `docs/` や `dev/` 直下へ重複配置しない。完了した版は、次の版へ進む時点で `dev/history/vX.Y.Z/` へ移動する。
 
@@ -22,7 +24,7 @@
 
 ### 2.1 共通規則
 
-- 固定名の `README.md` / `README.txt` / `LICENSE.txt` 以外は小文字ASCIIのkebab-caseを使う。
+- 固定名の `README.md` / `README.txt` / `LICENSE.txt` と `dev/templates/` の原本以外は小文字ASCIIのkebab-caseを使う。
 - 空白、日本語、全角記号、`#Uxxxx` のようなUnicodeエスケープ風表記、用途不明な略称は使わない。
 - 日付は `YYYYMMDD` とし、版と組み合わせる場合は末尾に置く。
 - ファイル名だけで役割が分かるようにし、アプリ名や版をディレクトリ名と重複させない。
