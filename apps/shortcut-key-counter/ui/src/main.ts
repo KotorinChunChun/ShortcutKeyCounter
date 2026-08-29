@@ -32,6 +32,8 @@ let realtimeReloadPending = false
 let currentOverlaySettings: OverlaySettings | null = null
 let currentOverlayMonitors: OverlayMonitor[] = []
 let currentOverlayLabels: OverlayKeyLabels | null = null
+let overlayPreviewGeneration = 0
+let overlayPreviewTimer: number | null = null
 let currentDatabaseEnvironment: DatabaseEnvironmentSnapshot | null = null
 const selectedModifierColumns = new Set<string>()
 const activeMappingCategories = new Set(['alnum', 'modifier', 'function', 'system'])
@@ -687,6 +689,20 @@ function validateOverlaySettings(settings: OverlaySettings): string | null {
   if(settings.repeat_counter.rotation_deg < -20 || settings.repeat_counter.rotation_deg > 20) return '連打カウンターの回転角は-20〜20°で指定してください。'
   if(settings.repeat_counter.font_size < 8 || settings.repeat_counter.font_size > 32) return '連打カウンターのフォントサイズは8〜32pxで指定してください。'
   return null
+}
+
+function scheduleOverlayPreview(): void {
+  const generation = ++overlayPreviewGeneration
+  if (overlayPreviewTimer !== null) window.clearTimeout(overlayPreviewTimer)
+  overlayPreviewTimer = window.setTimeout(() => {
+    overlayPreviewTimer = null
+    const settings = overlaySettingsFromUi()
+    if (!settings || validateOverlaySettings(settings)) return
+    void api.previewOverlaySettings(settings, generation).catch(error => {
+      // 入力途中の古い要求や、Security Gateの拒否でUIを巻き戻さない。
+      if (generation === overlayPreviewGeneration) showToast(errorMessage(error))
+    })
+  }, 200)
 }
 
 async function saveOverlaySettingsFromUi(showMessage = true): Promise<void> {
@@ -1359,6 +1375,7 @@ function bindEvents(): void {
     button.classList.add('active')
     if (mode === 'auto' && currentOverlaySettings.allowed_positions.length === 0) currentOverlaySettings.allowed_positions = [currentOverlaySettings.fixed_position]
     renderOverlaySettings({ ...currentOverlaySettings, position_mode: mode })
+    scheduleOverlayPreview()
     void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)))
   })
   el('overlayPositionGrid').addEventListener('click', event => {
@@ -1381,6 +1398,7 @@ function bindEvents(): void {
         if (fallback) currentOverlaySettings.preferred_position = fallback
       }
     }
+    scheduleOverlayPreview()
     void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)))
   })
   el<HTMLSelectElement>('overlayMonitorMode').addEventListener('change', () => {
@@ -1395,13 +1413,21 @@ function bindEvents(): void {
     }
     renderOverlayMonitorOptions(currentOverlaySettings)
     // fixed選択時はmonitor comboを先に操作可能にし、validation前の巻き戻りを防ぐ。
-    if (monitorMode !== 'fixed' || currentOverlaySettings.fixed_monitor_id) void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error)))
+    if (monitorMode !== 'fixed' || currentOverlaySettings.fixed_monitor_id) {
+      scheduleOverlayPreview()
+      void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error)))
+    }
   })
   ;['overlayDisplayMode', 'overlayMaxRows', 'overlayDuration', 'overlayEnterMs', 'overlayExitMs', 'overlayBackgroundColor'].forEach(id => {
-    el(id).addEventListener('change', () => void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error))))
+    el(id).addEventListener('input', scheduleOverlayPreview)
+    el(id).addEventListener('change', () => {
+      scheduleOverlayPreview()
+      void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)))
+    })
   })
   el<HTMLSelectElement>('overlayMonitorSelect').addEventListener('change', async event => {
     try {
+      scheduleOverlayPreview()
       await saveOverlaySettingsFromUi()
       const select = event.target as HTMLSelectElement
       const index = currentOverlayMonitors.findIndex(monitor => monitor.id === select.value)
@@ -1409,34 +1435,46 @@ function bindEvents(): void {
     } catch (error) { showToast(errorMessage(error)) }
   })
   ;['overlayEnterAnimation', 'overlayExitAnimation'].forEach(id => {
-    el(id).addEventListener('change', () => void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error))))
+    el(id).addEventListener('change', () => {
+      scheduleOverlayPreview()
+      void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)))
+    })
   })
   el<HTMLInputElement>('overlayBackgroundOpacity').addEventListener('input', event => {
     const value = Number((event.target as HTMLInputElement).value)
     el('overlayOpacityValue').textContent = `${value}%`
+    scheduleOverlayPreview()
   })
-  el<HTMLInputElement>('overlayBackgroundOpacity').addEventListener('change', () => void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error))))
+  el<HTMLInputElement>('overlayBackgroundOpacity').addEventListener('change', () => {
+    scheduleOverlayPreview()
+    void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)))
+  })
   el<HTMLInputElement>('overlayBackgroundColorPicker').addEventListener('input', event => {
     el<HTMLInputElement>('overlayBackgroundColor').value = (event.target as HTMLInputElement).value
+    scheduleOverlayPreview()
   })
-  el<HTMLInputElement>('overlayBackgroundColorPicker').addEventListener('change', () => void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error))))
+  el<HTMLInputElement>('overlayBackgroundColorPicker').addEventListener('change', () => {
+    scheduleOverlayPreview()
+    void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)))
+  })
   el<HTMLInputElement>('overlayBackgroundColor').addEventListener('input', event => {
     const value = (event.target as HTMLInputElement).value
     if (/^#[0-9a-fA-F]{6}$/.test(value)) el<HTMLInputElement>('overlayBackgroundColorPicker').value = value
+    scheduleOverlayPreview()
   })
   ;([
     ['repeatCounterBackground','repeatCounterBackgroundPicker'],
     ['repeatCounterText','repeatCounterTextPicker'],
     ['repeatCounterAccent','repeatCounterAccentPicker'],
   ] as const).forEach(([textId,pickerId])=>{
-    el<HTMLInputElement>(textId).addEventListener('input',event=>{const value=(event.target as HTMLInputElement).value;if(/^#[0-9a-fA-F]{6}$/.test(value))el<HTMLInputElement>(pickerId).value=value;syncRepeatCounterDraftFromUi()})
-    el<HTMLInputElement>(pickerId).addEventListener('input',event=>{el<HTMLInputElement>(textId).value=(event.target as HTMLInputElement).value;syncRepeatCounterDraftFromUi()})
-    el<HTMLInputElement>(pickerId).addEventListener('change',()=>void saveOverlaySettingsFromUi(false).catch(error=>showToast(errorMessage(error))))
-    el<HTMLInputElement>(textId).addEventListener('change',()=>void saveOverlaySettingsFromUi(false).catch(error=>showToast(errorMessage(error))))
+    el<HTMLInputElement>(textId).addEventListener('input',event=>{const value=(event.target as HTMLInputElement).value;if(/^#[0-9a-fA-F]{6}$/.test(value))el<HTMLInputElement>(pickerId).value=value;syncRepeatCounterDraftFromUi();scheduleOverlayPreview()})
+    el<HTMLInputElement>(pickerId).addEventListener('input',event=>{el<HTMLInputElement>(textId).value=(event.target as HTMLInputElement).value;syncRepeatCounterDraftFromUi();scheduleOverlayPreview()})
+    el<HTMLInputElement>(pickerId).addEventListener('change',()=>{scheduleOverlayPreview();void saveOverlaySettingsFromUi(false).catch(error=>showToast(errorMessage(error)))})
+    el<HTMLInputElement>(textId).addEventListener('change',()=>{scheduleOverlayPreview();void saveOverlaySettingsFromUi(false).catch(error=>showToast(errorMessage(error)))})
   })
   ;['repeatCounterShape','repeatCounterRotation','repeatCounterFontSize'].forEach(id=>{
-    el(id).addEventListener('input',syncRepeatCounterDraftFromUi)
-    el(id).addEventListener('change',()=>void saveOverlaySettingsFromUi(false).catch(error=>showToast(errorMessage(error))))
+    el(id).addEventListener('input',()=>{syncRepeatCounterDraftFromUi();scheduleOverlayPreview()})
+    el(id).addEventListener('change',()=>{scheduleOverlayPreview();void saveOverlaySettingsFromUi(false).catch(error=>showToast(errorMessage(error)))})
   })
   el<HTMLButtonElement>('openOverlayLabels').addEventListener('click', async () => {
     try { await api.openOverlayLabels() } catch (error) { showToast(errorMessage(error)) }

@@ -118,6 +118,14 @@ impl OverlayHandle {
         let _ = self.sender.try_send(OverlayCommand::PreviewSample);
     }
 
+    /// 保存前の外観draftをPreview専用経路へ渡す。generationはUI側の入力順を表し、
+    /// Overlay threadは古いdraftを破棄する。
+    pub fn preview_draft(&self, config: OverlayConfig, generation: u64) {
+        let _ = self
+            .sender
+            .try_send(OverlayCommand::PreviewDraft { config, generation });
+    }
+
     /// 固定モニター選択直後の識別プレビュー。実入力経路・DB・Realtime Logは通さない。
     pub fn preview_monitor(&self, monitor_id: String, label: String) {
         let _ = self
@@ -252,7 +260,14 @@ enum OverlayCommand {
     ReloadAssets,
     ResetSession,
     PreviewSample,
-    PreviewMonitor { monitor_id: String, label: String },
+    PreviewDraft {
+        config: OverlayConfig,
+        generation: u64,
+    },
+    PreviewMonitor {
+        monitor_id: String,
+        label: String,
+    },
     MoveOpposite,
     Stop,
 }
@@ -309,6 +324,53 @@ struct RecentSourceEvent {
     received_at: Instant,
 }
 
+fn preview_sample_item(id: u64, now: Instant) -> OverlayItem {
+    OverlayItem {
+        id,
+        kind: OverlayRowKind::SingleKeySequence,
+        tokens: ["S", "A", "M", "P", "L", "E"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        created_at: now,
+        last_input_at: now,
+        last_token_started_at: now,
+        phase: OverlayPhase::Stable,
+        repeat_identity: None,
+        repeat_count: 1,
+        repeat_start_index: 0,
+        repeat_token_len: 1,
+        repeat_bump_started_at: None,
+        preview_only: true,
+        monitor_override: None,
+        position_override: None,
+        move_started: None,
+        move_rows: 0.0,
+    }
+}
+
+fn restore_preview_config(
+    renderer: &mut OverlayRenderer,
+    paths: &OverlayPaths,
+    preview_base_config: &mut Option<OverlayConfig>,
+) {
+    let Some(config) = preview_base_config.clone() else {
+        return;
+    };
+    let labels = load_labels(&paths.labels_json);
+    if renderer.replace_assets(paths, config, labels).is_ok() {
+        *preview_base_config = None;
+    }
+}
+
+fn accept_preview_generation(latest: &mut u64, generation: u64) -> bool {
+    if generation < *latest {
+        return false;
+    }
+    *latest = generation;
+    true
+}
+
 fn run_overlay_thread(
     receiver: Receiver<OverlayCommand>,
     paths: Arc<OverlayPaths>,
@@ -331,6 +393,10 @@ fn run_overlay_thread(
     let mut last_position: Option<OverlayPosition> = None;
     let mut next_id = 1u64;
     let mut enabled = enabled_state.load(Ordering::Acquire);
+    // 保存前draftの描画中だけ、永続設定へ戻すための基準値を保持する。
+    // draftはOverlay thread内のPreview item専用で、Capture/DB側の状態には触れない。
+    let mut preview_base_config: Option<OverlayConfig> = None;
+    let mut latest_preview_generation = 0u64;
 
     loop {
         window.pump_messages();
@@ -349,6 +415,9 @@ fn run_overlay_thread(
 
         let now = Instant::now();
         remove_expired(&mut items, now, renderer.config());
+        if preview_base_config.is_some() && !items.iter().any(|item| item.preview_only) {
+            restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+        }
         if items.is_empty() {
             if let Ok(mut value) = bounds.write() {
                 *value = None;
@@ -400,6 +469,10 @@ fn run_overlay_thread(
                 if !enabled || is_duplicate_source_event(&recent_sources, &event) {
                     continue;
                 }
+                if preview_base_config.is_some() {
+                    restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                    items.clear();
+                }
                 recent_sources.push_back(RecentSourceEvent {
                     identity: event.identity().to_owned(),
                     application: event.application.clone(),
@@ -414,6 +487,7 @@ fn run_overlay_thread(
                 enabled = value;
                 enabled_state.store(value, Ordering::Release);
                 if !value {
+                    restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
                     items.clear();
                     recent_sources.clear();
                     if let Ok(mut value) = bounds.write() {
@@ -423,6 +497,7 @@ fn run_overlay_thread(
                 }
             }
             OverlayCommand::ResetSession => {
+                restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
                 items.clear();
                 recent_sources.clear();
                 if let Ok(mut value) = bounds.write() {
@@ -431,9 +506,11 @@ fn run_overlay_thread(
                 window.hide();
             }
             OverlayCommand::ReloadAssets => {
+                restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
                 let config = load_theme(&paths.theme_json);
                 let labels = load_labels(&paths.labels_json);
                 if renderer.replace_assets(&paths, config, labels).is_ok() {
+                    items.retain(|item| !item.preview_only);
                     enforce_max_rows(&mut items, renderer.config().max_rows);
                     if items.is_empty() {
                         window.hide();
@@ -441,33 +518,39 @@ fn run_overlay_thread(
                 }
             }
             OverlayCommand::PreviewSample => {
+                restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
                 items.clear();
                 let now = Instant::now();
-                items.push_back(OverlayItem {
-                    id: next_id,
-                    kind: OverlayRowKind::SingleKeySequence,
-                    tokens: ["S", "A", "M", "P", "L", "E"]
-                        .into_iter()
-                        .map(str::to_owned)
-                        .collect(),
-                    created_at: now,
-                    last_input_at: now,
-                    last_token_started_at: now,
-                    phase: OverlayPhase::Stable,
-                    repeat_identity: None,
-                    repeat_count: 1,
-                    repeat_start_index: 0,
-                    repeat_token_len: 1,
-                    repeat_bump_started_at: None,
-                    preview_only: true,
-                    monitor_override: None,
-                    position_override: None,
-                    move_started: None,
-                    move_rows: 0.0,
-                });
+                items.push_back(preview_sample_item(next_id, now));
+                next_id = next_id.wrapping_add(1);
+            }
+            OverlayCommand::PreviewDraft { config, generation } => {
+                if !accept_preview_generation(&mut latest_preview_generation, generation) {
+                    continue;
+                }
+                if preview_base_config.is_none() {
+                    preview_base_config = Some(renderer.config().clone());
+                }
+                let labels = load_labels(&paths.labels_json);
+                if renderer
+                    .replace_assets(&paths, config.sanitize(), labels)
+                    .is_err()
+                {
+                    restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                    items.clear();
+                    if let Ok(mut value) = bounds.write() {
+                        *value = None;
+                    }
+                    window.hide();
+                    continue;
+                }
+                items.clear();
+                let now = Instant::now();
+                items.push_back(preview_sample_item(next_id, now));
                 next_id = next_id.wrapping_add(1);
             }
             OverlayCommand::PreviewMonitor { monitor_id, label } => {
+                restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
                 items.clear();
                 let now = Instant::now();
                 items.push_back(OverlayItem {
@@ -1390,6 +1473,26 @@ mod tests {
             OverlayCaptureSource::Local,
         );
         assert!(!is_duplicate_source_event(&recent, &local));
+    }
+
+    #[test]
+    fn preview_generation_discards_only_older_drafts() {
+        let mut latest = 4;
+        assert!(!accept_preview_generation(&mut latest, 3));
+        assert_eq!(latest, 4);
+        assert!(accept_preview_generation(&mut latest, 5));
+        assert_eq!(latest, 5);
+        assert!(accept_preview_generation(&mut latest, 5));
+        assert_eq!(latest, 5);
+    }
+
+    #[test]
+    fn preview_item_is_not_part_of_a_repeat_run() {
+        let item = preview_sample_item(1, Instant::now());
+        assert!(item.preview_only);
+        assert_eq!(item.repeat_identity, None);
+        assert_eq!(item.repeat_count, 1);
+        assert_eq!(item.tokens, vec!["S", "A", "M", "P", "L", "E"]);
     }
 
     #[test]

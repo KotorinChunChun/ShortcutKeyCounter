@@ -40,6 +40,7 @@ export const api = {
     setDetailEventRetentionDays: (days) => invoke('set_detail_event_retention_days', { days }),
     setOverlayEnabled: (enabled) => invoke('set_overlay_enabled', { enabled }),
     overlaySettings: () => invoke('get_overlay_settings'),
+    previewOverlaySettings: (settings, generation) => invoke('preview_overlay_settings', { settings, generation }),
     overlayMonitors: () => invoke('get_overlay_monitors'),
     previewOverlayMonitor: (monitorId, number) => invoke('preview_overlay_monitor', { monitorId, number }),
     setOverlaySettings: (settings) => invoke('set_overlay_settings', { settings }),

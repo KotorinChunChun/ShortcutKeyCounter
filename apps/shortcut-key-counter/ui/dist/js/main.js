@@ -24,6 +24,8 @@ let realtimeReloadPending = false;
 let currentOverlaySettings = null;
 let currentOverlayMonitors = [];
 let currentOverlayLabels = null;
+let overlayPreviewGeneration = 0;
+let overlayPreviewTimer = null;
 let currentDatabaseEnvironment = null;
 const selectedModifierColumns = new Set();
 const activeMappingCategories = new Set(['alnum', 'modifier', 'function', 'system']);
@@ -735,6 +737,22 @@ function validateOverlaySettings(settings) {
     if (settings.repeat_counter.font_size < 8 || settings.repeat_counter.font_size > 32)
         return '連打カウンターのフォントサイズは8〜32pxで指定してください。';
     return null;
+}
+function scheduleOverlayPreview() {
+    const generation = ++overlayPreviewGeneration;
+    if (overlayPreviewTimer !== null)
+        window.clearTimeout(overlayPreviewTimer);
+    overlayPreviewTimer = window.setTimeout(() => {
+        overlayPreviewTimer = null;
+        const settings = overlaySettingsFromUi();
+        if (!settings || validateOverlaySettings(settings))
+            return;
+        void api.previewOverlaySettings(settings, generation).catch(error => {
+            // 入力途中の古い要求や、Security Gateの拒否でUIを巻き戻さない。
+            if (generation === overlayPreviewGeneration)
+                showToast(errorMessage(error));
+        });
+    }, 200);
 }
 async function saveOverlaySettingsFromUi(showMessage = true) {
     const settings = overlaySettingsFromUi();
@@ -1596,6 +1614,7 @@ function bindEvents() {
         if (mode === 'auto' && currentOverlaySettings.allowed_positions.length === 0)
             currentOverlaySettings.allowed_positions = [currentOverlaySettings.fixed_position];
         renderOverlaySettings({ ...currentOverlaySettings, position_mode: mode });
+        scheduleOverlayPreview();
         void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)));
     });
     el('overlayPositionGrid').addEventListener('click', event => {
@@ -1623,6 +1642,7 @@ function bindEvents() {
                     currentOverlaySettings.preferred_position = fallback;
             }
         }
+        scheduleOverlayPreview();
         void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)));
     });
     el('overlayMonitorMode').addEventListener('change', () => {
@@ -1638,14 +1658,21 @@ function bindEvents() {
         }
         renderOverlayMonitorOptions(currentOverlaySettings);
         // fixed選択時はmonitor comboを先に操作可能にし、validation前の巻き戻りを防ぐ。
-        if (monitorMode !== 'fixed' || currentOverlaySettings.fixed_monitor_id)
+        if (monitorMode !== 'fixed' || currentOverlaySettings.fixed_monitor_id) {
+            scheduleOverlayPreview();
             void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error)));
+        }
     });
     ['overlayDisplayMode', 'overlayMaxRows', 'overlayDuration', 'overlayEnterMs', 'overlayExitMs', 'overlayBackgroundColor'].forEach(id => {
-        el(id).addEventListener('change', () => void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error))));
+        el(id).addEventListener('input', scheduleOverlayPreview);
+        el(id).addEventListener('change', () => {
+            scheduleOverlayPreview();
+            void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)));
+        });
     });
     el('overlayMonitorSelect').addEventListener('change', async (event) => {
         try {
+            scheduleOverlayPreview();
             await saveOverlaySettingsFromUi();
             const select = event.target;
             const index = currentOverlayMonitors.findIndex(monitor => monitor.id === select.value);
@@ -1657,21 +1684,33 @@ function bindEvents() {
         }
     });
     ['overlayEnterAnimation', 'overlayExitAnimation'].forEach(id => {
-        el(id).addEventListener('change', () => void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error))));
+        el(id).addEventListener('change', () => {
+            scheduleOverlayPreview();
+            void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)));
+        });
     });
     el('overlayBackgroundOpacity').addEventListener('input', event => {
         const value = Number(event.target.value);
         el('overlayOpacityValue').textContent = `${value}%`;
+        scheduleOverlayPreview();
     });
-    el('overlayBackgroundOpacity').addEventListener('change', () => void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error))));
+    el('overlayBackgroundOpacity').addEventListener('change', () => {
+        scheduleOverlayPreview();
+        void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)));
+    });
     el('overlayBackgroundColorPicker').addEventListener('input', event => {
         el('overlayBackgroundColor').value = event.target.value;
+        scheduleOverlayPreview();
     });
-    el('overlayBackgroundColorPicker').addEventListener('change', () => void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error))));
+    el('overlayBackgroundColorPicker').addEventListener('change', () => {
+        scheduleOverlayPreview();
+        void saveOverlaySettingsFromUi().catch(error => showToast(errorMessage(error)));
+    });
     el('overlayBackgroundColor').addEventListener('input', event => {
         const value = event.target.value;
         if (/^#[0-9a-fA-F]{6}$/.test(value))
             el('overlayBackgroundColorPicker').value = value;
+        scheduleOverlayPreview();
     });
     [
         ['repeatCounterBackground', 'repeatCounterBackgroundPicker'],
@@ -1679,14 +1718,14 @@ function bindEvents() {
         ['repeatCounterAccent', 'repeatCounterAccentPicker'],
     ].forEach(([textId, pickerId]) => {
         el(textId).addEventListener('input', event => { const value = event.target.value; if (/^#[0-9a-fA-F]{6}$/.test(value))
-            el(pickerId).value = value; syncRepeatCounterDraftFromUi(); });
-        el(pickerId).addEventListener('input', event => { el(textId).value = event.target.value; syncRepeatCounterDraftFromUi(); });
-        el(pickerId).addEventListener('change', () => void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error))));
-        el(textId).addEventListener('change', () => void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error))));
+            el(pickerId).value = value; syncRepeatCounterDraftFromUi(); scheduleOverlayPreview(); });
+        el(pickerId).addEventListener('input', event => { el(textId).value = event.target.value; syncRepeatCounterDraftFromUi(); scheduleOverlayPreview(); });
+        el(pickerId).addEventListener('change', () => { scheduleOverlayPreview(); void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error))); });
+        el(textId).addEventListener('change', () => { scheduleOverlayPreview(); void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error))); });
     });
     ['repeatCounterShape', 'repeatCounterRotation', 'repeatCounterFontSize'].forEach(id => {
-        el(id).addEventListener('input', syncRepeatCounterDraftFromUi);
-        el(id).addEventListener('change', () => void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error))));
+        el(id).addEventListener('input', () => { syncRepeatCounterDraftFromUi(); scheduleOverlayPreview(); });
+        el(id).addEventListener('change', () => { scheduleOverlayPreview(); void saveOverlaySettingsFromUi(false).catch(error => showToast(errorMessage(error))); });
     });
     el('openOverlayLabels').addEventListener('click', async () => {
         try {

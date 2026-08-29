@@ -30,7 +30,7 @@ use crate::overlay::config::{
 use crate::overlay::OverlayHandle;
 use crate::realtime_log::RealtimeLog;
 use crate::runtime::{CaptureRuntime, RuntimeError};
-use crate::security_gate::SharedSecurityStatus;
+use crate::security_gate::{SecurityStopReason, SharedSecurityStatus};
 use crate::settings::{
     get_capture_elevated, get_usage_tracking_enabled, set_capture_elevated,
     set_overlay_enabled as persist_overlay_enabled, set_usage_tracking_enabled, SettingsError,
@@ -54,6 +54,8 @@ pub enum AppStateError {
     OverlayConfig(#[from] OverlayConfigError),
     #[error("キーポリシーを処理できません: {0}")]
     KeyPolicy(#[from] KeyPolicyError),
+    #[error("Security Gateが保護中です")]
+    SecurityGateBlocked,
 }
 
 pub struct AppState {
@@ -204,6 +206,26 @@ impl AppState {
 
     pub fn overlay_labels(&self) -> OverlayKeyLabels {
         load_labels(self.overlay.labels_path())
+    }
+
+    /// 保存前のOverlay外観draftをPreviewする。Security Gateがblocked/unknownの間は
+    /// Previewを拒否し、既に表示中のPreviewもcapture workerと同じreset経路で消す。
+    pub fn preview_overlay_settings(
+        &self,
+        config: OverlayConfig,
+        generation: u64,
+    ) -> Result<(), AppStateError> {
+        let blocked = self
+            .security_status
+            .read()
+            .map_err(|_| AppStateError::Poisoned)
+            .map(|status| status.blocked || status.reason == SecurityStopReason::Unknown)?;
+        if blocked {
+            self.overlay.reset_session();
+            return Err(AppStateError::SecurityGateBlocked);
+        }
+        self.overlay.preview_draft(config.sanitize(), generation);
+        Ok(())
     }
 
     pub fn replace_overlay_labels(

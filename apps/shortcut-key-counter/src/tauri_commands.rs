@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager, State};
 
 use crate::analytics::{self, AnalyticsRange, RankingsSnapshot, UsageGraphSnapshot};
 use crate::app_info::{self, AppInfo};
-use crate::app_state::AppState;
+use crate::app_state::{AppState, AppStateError};
 use crate::capture_health::CaptureHealthSnapshot;
 use crate::command_api::{self, CaptureStatus, OverlaySettingsDto, SettingsSnapshot};
 use crate::command_error::CommandError;
@@ -416,6 +416,29 @@ pub fn get_overlay_settings(
     state: State<'_, AppState>,
 ) -> Result<OverlaySettingsDto, CommandError> {
     overlay_settings_snapshot(&state)
+}
+
+/// 保存前の設定をOverlay threadへPreview専用で渡す。永続ファイル、DB、
+/// Realtime Log、統計、通常入力のrepeat stateは変更しない。
+#[tauri::command]
+pub fn preview_overlay_settings(
+    state: State<'_, AppState>,
+    settings: OverlaySettingsDto,
+    generation: u64,
+) -> Result<(), CommandError> {
+    let config = settings.apply_to(state.overlay_config());
+    state
+        .preview_overlay_settings(config, generation)
+        .map_err(|error| match error {
+            AppStateError::SecurityGateBlocked => CommandError::new(
+                "SECURITY_BLOCKED",
+                "Security Gateが保護中のため、オーバーレイPreviewを表示できません。",
+            ),
+            _ => CommandError::new(
+                "SETTINGS_FAILED",
+                "オーバーレイPreviewを表示できませんでした。",
+            ),
+        })
 }
 
 #[tauri::command]

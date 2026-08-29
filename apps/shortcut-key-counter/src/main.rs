@@ -143,6 +143,7 @@ fn main() {
             tauri_commands::cancel_key_search,
             tauri_commands::set_overlay_enabled,
             tauri_commands::get_overlay_settings,
+            tauri_commands::preview_overlay_settings,
             tauri_commands::get_overlay_monitors,
             tauri_commands::preview_overlay_monitor,
             tauri_commands::set_overlay_settings,
