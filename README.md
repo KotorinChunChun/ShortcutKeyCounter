@@ -1,80 +1,84 @@
-# ShortcutKeyCounter v0.1.4
+# ShortcutKeyCounter
 
-Windows上のショートカット利用をローカル集計する Rust + Tauri 2 デスクトップアプリです。通常文字列、URL、ウィンドウタイトル、ドキュメント名、クリップボード、実行ファイルのフルパスは保存しません。
+> Windowsで使ったショートカットキーを、端末内だけで記録・可視化するデスクトップアプリです。
 
-## ダウンロードと使い方
+対応OS: Windows 10 / 11（64bit）｜現在のリリース: v0.1.4｜ライセンス: MIT
 
-- [最新版をGitHub Releasesからダウンロード](https://github.com/KotorinChunChun/ShortcutKeyCounter/releases/latest)
-- [ユーザーガイド](docs/users-guide.md)
+<!--
+README用の画像を追加したら、次のコメントを画像参照へ置き換えてください。
+![ShortcutKeyCounterのダッシュボード](docs/images/users-guide/006-dashboard-overview.png)
+-->
 
-ZIPを展開し、`ShortcutKeyCounter.exe` を実行してください。`ShortcutKeyCapture.exe` は同じフォルダーに置いたまま使用します。実行ファイルはコード署名されていないため、Windowsの警告が表示される場合があります。
+## 概要
 
-## v0.1.4 主な実装
+ShortcutKeyCounterは、普段どのショートカットをどのアプリで使っているかを集計するWindowsアプリです。ランキングやグラフで利用傾向を確認でき、よく使う操作や覚えたいショートカットの振り返りに利用できます。
 
-- Win32 Low-Level keyboard / mouse hook + Elevated helper。
-- 修飾なし単独入力はkeyboard / mouse / vertical wheel / horizontal wheelのすべてで永続記録禁止。修飾なし通常mouse clickはOverlay表示のみ可能、wheel-only / Modifier-onlyはOverlayにも表示しない。
-- Realtime LogはDB記録対象イベントだけを表示し、Security GateはOverlay / Realtime Log / DBより前でFail Closed。
-- Overlay設定のcombo再描画問題と固定monitor選択を修正。Light themeの9位置選択状態も青背景・白文字へ統一。
-- DuplicateGuardを0.0〜10.0秒、詳細イベント保持を1〜365日でruntime設定化。
-- キーマッピングは内部scroll、分類filter + 一括変更、修飾列multi-select、検索専用の物理キーCaptureを実装。検索入力はDB/Realtime Log/Overlay/statisticsへ流さない。
-- 「計測結果」配下へRealtime Log / Ranking / Usage Graph / Key×Application Matrixを整理。Rankingはキー別とアプリ別を左右2ペインへ統合。
-- Rankingは今日 / 7日 / 30日 / 全期間、対象アプリ再集計、平均・構成比・比較率、3-state sort（降順→昇順→なし）へ対応。今日の比較は前日の同時刻まで。
-- Usage Graphを追加。キー/アプリ別、上位5系列初期ON、今日=hour・7/30日=day・全期間=monthでSQLite集計し、系列色を内部identity単位で保存。
-- Native Overlayに700ms Repeat Compressorを追加。2回目までは通常表示、3回目から `×N` へ圧縮し、countだけ専用bump animation。DB DuplicateGuardとは独立。
-- Repeat counterの背景/文字/影色、badge形状、回転角、font sizeを設定画面内PreviewとNative Overlayで共通schema化。`overlay-theme.json`はschema v3。
-- Overlay退避clickはclick-throughを維持しつつ、修飾付きでもShortcutKeyCounter内部では完全破棄。中央からの退避先は右下。
-- Production / Test DBを維持。Sample dataはTest DBだけへ、Production DBの記録可能identityを母集団として前日まで60日・約10,000event + application usageを生成。前日Realtime Log sampleはTest DBの生成済みeventから構成。
-- v0.1.3ユーザー修正版のCargo dependency / Overlay `Arc<Pixmap>` / Clippy / test修正を維持。
+計測データはローカルのSQLiteへ保存します。入力した文章、URL、ウィンドウタイトル、ドキュメント名、クリップボード、実行ファイルのフルパスは保存しません。
 
-## セキュリティ不変条件
+## 主な機能
 
-設定UI・JSON・旧設定値よりRuntime Security Gateを優先します。特に修飾なし単独入力は設定を改ざんしてもSQLite、Realtime Log、診断、CSV等へ保存しません。password/credential保護、高権限foreground、計測停止、除外アプリの判定はOverlay/DBより前に適用します。
+- ショートカットの回数をキー別・アプリ別に集計
+- 今日・7日・30日・全期間のランキングと使用率グラフ
+- キーとアプリの組み合わせを確認できるマトリクス表示
+- 入力したキーを画面へ表示するネイティブオーバーレイ
+- キー・修飾パターンごとの表示／記録ポリシー設定
+- 計測しないアプリの除外設定
+- リアルタイムログ、CSV出力、SQLiteバックアップ
+- 本番DBと検証DBの分離、検証用サンプルデータ生成
 
-## プロジェクト構成
+## 画面構成
 
-- `crates/shortcut-common`: 共通model / IPC protocol / path
-- `crates/shortcut-core`: shortcut判定・正規化・重複抑制
-- `crates/shortcut-storage`: SQLite、repository、statistics、migration
-- `crates/shortcut-windows`: Win32 hook / foreground / user activity / overlay window / elevation / IPC
-- `apps/shortcut-key-counter`: Tauriメインアプリ
-- `apps/shortcut-key-capture`: 管理者権限アプリ向け入力取得helper
-- `scripts`: release / ZIP packaging
-- `docs`: Windows build / acceptance
-- `dev`: 現行仕様・実装記録・共通テンプレート・旧版履歴
-- `release/Publish`: GitHub Releasesへ公開する配布成果物のローカル控え（Git追跡対象外）
+| 画面 | できること |
+|---|---|
+| ダッシュボード | 利用回数、ランキング、利用推移の概要を確認 |
+| リアルタイムログ | 記録対象になったショートカットをメモリ上で確認 |
+| ランキング | キー別・アプリ別の集計を期間ごとに比較 |
+| 使用率グラフ | 上位キー・アプリの推移をグラフ表示 |
+| キー × アプリ見取り図 | キーとアプリの利用傾向をマトリクス表示 |
+| キーマッピング | キー名と表示／記録ポリシーを編集 |
+| 除外アプリ | 計測対象外にする実行ファイル名を管理 |
+| データ管理 | DB切替、CSV、バックアップ、削除を実行 |
+| 設定 | オーバーレイ、Windows起動、保持期間等を変更 |
 
-## Windows build
+## ダウンロード
 
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-release.ps1
-```
+1. [GitHub Releases](https://github.com/KotorinChunChun/ShortcutKeyCounter/releases/latest)から最新の `ShortcutKeyCounter-vX.Y.Z-win-x64.zip` をダウンロードします。
+2. ZIPを任意のフォルダーへ展開します。
+3. `ShortcutKeyCounter.exe` と `ShortcutKeyCapture.exe` を同じフォルダーに置いたまま、`ShortcutKeyCounter.exe` を実行します。
 
-ZIPだけ作る場合:
+インストーラを使わないポータブル版です。実行ファイルはコード署名されていないため、Windowsの警告が表示される場合があります。実行前に、公式GitHubから取得したファイルであることと、Release本文のSHA-256が一致することを確認してください。
 
-```powershell
-.\scripts\build-release.ps1 -SkipInstaller
-```
+詳しい導入方法は[ユーザーガイド](docs/users-guide.md)を参照してください。
 
-生成したZIPは `release/Publish/` に保存されます。
+## 基本的な使い方
 
-個別確認:
+1. `ShortcutKeyCounter.exe` を起動します。起動と同時に計測が始まります。
+2. 普段どおりWindowsアプリを操作します。
+3. ダッシュボード、ランキング、使用率グラフで結果を確認します。
+4. 必要に応じてキーマッピング、除外アプリ、オーバーレイを調整します。
 
-```powershell
-cargo fmt --all -- --check
-cargo check --workspace --all-targets --all-features
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-cargo build --release -p shortcut-key-counter -p shortcut-key-capture
-```
+ウィンドウを閉じてもバックエンドは通知領域で動作を続けます。画面の再表示は通知領域アイコンのダブルクリック、完全終了は右クリックメニューの「終了」から行います。
 
-Frontend:
+## プライバシーとセキュリティ
 
-```powershell
-tsc -p .\apps\shortcut-key-counter\ui\tsconfig.json
-```
+保存する情報:
 
-詳細は [`docs/windows-build-and-acceptance.md`](docs/windows-build-and-acceptance.md) を参照してください。
+- 正規化済みのショートカット名
+- 最前面アプリの実行ファイル名
+- 集計に必要な時刻と回数
+- 有効にした場合のアプリ利用時間の日次集計
+
+保存しない情報:
+
+- 入力した文章や修飾キーなしの単独入力
+- URL、ウィンドウタイトル、ドキュメント名
+- クリップボード内容
+- 実行ファイルのフルパス
+- パスワードや資格情報
+
+Security Gateは、オーバーレイ表示、リアルタイムログ、DB記録より前に動作します。パスワード・資格情報入力、高権限アプリ、除外アプリ、安全性を確認できない状態では、記録しない側へ停止します。
+
+修飾キーなしの単独入力は、UIやJSON設定を変更しても永続記録できません。
 
 ## データ保存先
 
@@ -88,4 +92,65 @@ tsc -p .\apps\shortcut-key-counter\ui\tsconfig.json
 %LOCALAPPDATA%\ShortcutKeyCounter\overlay\default\key.svg
 ```
 
-DBは実行ファイル配置先から独立しています。
+データは実行ファイルの配置先とは別に保存されます。アンインストール時に統計や設定も削除する場合は、先にバックアップを作成してください。
+
+## 開発者向け情報
+
+### 構成
+
+- `apps/shortcut-key-counter`: Tauriメインアプリ
+- `apps/shortcut-key-capture`: 管理者権限アプリ向け入力取得ヘルパー
+- `crates/shortcut-common`: 共通モデル、IPC、パス
+- `crates/shortcut-core`: 判定、正規化、重複抑制
+- `crates/shortcut-storage`: SQLite、Repository、統計、Migration
+- `crates/shortcut-windows`: Win32 Hook、Foreground、Overlay、Elevation
+- `migrations`: SQLite Migration
+- `scripts`: ビルド、テスト、パッケージ処理
+- `docs`: 利用者・ビルド担当者向け文書
+- `dev`: 現行仕様、実装記録、テンプレート、旧版履歴
+- `release/Publish`: 配布成果物のローカル控え（Git追跡対象外）
+
+### 必要な環境
+
+- Rust stable
+- Node.js
+- PowerShell 7（`pwsh`）
+- Windows SDKを含むRustのWindowsビルド環境
+
+### ビルド
+
+ZIPまで生成する場合:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -SkipInstaller
+```
+
+生成したZIPは `release/Publish/` に保存されます。
+
+個別に確認する場合:
+
+```powershell
+cargo fmt --all -- --check
+cargo check --workspace --all-targets --all-features
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test --workspace --all-features
+pwsh -ExecutionPolicy Bypass -File .\apps\shortcut-key-counter\scripts\build-ui.ps1
+```
+
+詳しくは[Windowsビルド・受入手順](docs/windows-build-and-acceptance.md)を参照してください。
+
+## ドキュメント
+
+- [ユーザーガイド](docs/users-guide.md)
+- [利用者向けドキュメント一覧](docs/README.md)
+- [Windowsビルド・受入手順](docs/windows-build-and-acceptance.md)
+- [開発資料](dev/README.md)
+
+## ライセンス
+
+本ソフトウェアは[MIT License](LICENSE.txt)で公開しています。
+
+## 作者・フィードバック
+
+- GitHub: [KotorinChunChun](https://github.com/KotorinChunChun)
+- 不具合報告・要望: [GitHub Issues](https://github.com/KotorinChunChun/ShortcutKeyCounter/issues)
