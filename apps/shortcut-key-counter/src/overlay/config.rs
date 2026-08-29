@@ -269,9 +269,13 @@ impl OverlayConfig {
         self.cache_items = self.cache_items.clamp(8, 512);
         // Kept only for backward-compatible JSON loading. Rendering now uses monitor work area.
         self.max_window_width = self.max_window_width.clamp(240, 16_000);
-        self.allowed_positions
-            .sort_by_key(|position| position_order(*position));
-        self.allowed_positions.dedup();
+        let mut allowed_positions = Vec::with_capacity(self.allowed_positions.len());
+        for position in self.allowed_positions.drain(..) {
+            if !allowed_positions.contains(&position) {
+                allowed_positions.push(position);
+            }
+        }
+        self.allowed_positions = allowed_positions;
         if self.allowed_positions.is_empty() {
             self.allowed_positions = default_allowed_positions();
         }
@@ -624,20 +628,6 @@ fn default_allowed_positions() -> Vec<OverlayPosition> {
     vec![OverlayPosition::BottomLeft, OverlayPosition::BottomRight]
 }
 
-fn position_order(position: OverlayPosition) -> u8 {
-    match position {
-        OverlayPosition::TopLeft => 0,
-        OverlayPosition::TopCenter => 1,
-        OverlayPosition::TopRight => 2,
-        OverlayPosition::MiddleLeft => 3,
-        OverlayPosition::Center => 4,
-        OverlayPosition::MiddleRight => 5,
-        OverlayPosition::BottomLeft => 6,
-        OverlayPosition::BottomCenter => 7,
-        OverlayPosition::BottomRight => 8,
-    }
-}
-
 pub fn load_labels(path: &Path) -> OverlayKeyLabels {
     fs::read_to_string(path)
         .ok()
@@ -681,6 +671,24 @@ mod tests {
         assert!(config.fixed_monitor_id.is_empty());
         assert_eq!(config.animation.enter_ms, 160);
         assert_eq!(config.animation.exit_ms, 400);
+    }
+
+    #[test]
+    fn sanitize_preserves_saved_position_order_while_removing_duplicates() {
+        let config = OverlayConfig {
+            allowed_positions: vec![
+                OverlayPosition::TopRight,
+                OverlayPosition::BottomLeft,
+                OverlayPosition::TopRight,
+            ],
+            ..OverlayConfig::default()
+        }
+        .sanitize();
+
+        assert_eq!(
+            config.allowed_positions,
+            vec![OverlayPosition::TopRight, OverlayPosition::BottomLeft]
+        );
     }
 
     #[test]

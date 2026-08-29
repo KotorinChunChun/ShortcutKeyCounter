@@ -890,38 +890,47 @@ fn render_frame(
         cursor_y += bitmap.height() as f32 + gap as f32;
     }
 
-    let foreground_rect = window.foreground_window_rect().ok();
     let position_override = items.back().and_then(|item| item.position_override);
-    let position = position_override.unwrap_or_else(|| match config.position_mode {
-        OverlayPositionMode::Fixed => config.fixed_position,
-        OverlayPositionMode::Auto => choose_auto_position(
-            &config,
-            work,
-            Size {
-                width: width as i32,
-                height: height as i32,
-            },
-            foreground_rect,
-            margin,
-        ),
-    });
-    let raw_origin = calculate_overlay_origin(
-        work,
-        Size {
-            width: width as i32,
-            height: height as i32,
-        },
-        position,
-        margin,
-    );
-    let origin = clamp_origin(
-        work,
-        Size {
-            width: width as i32,
-            height: height as i32,
-        },
-        raw_origin,
-    );
+    let size = Size {
+        width: width as i32,
+        height: height as i32,
+    };
+    let auto_position =
+        position_override.is_none() && config.position_mode == OverlayPositionMode::Auto;
+    let position = if let Some(position) = position_override {
+        position
+    } else {
+        match config.position_mode {
+            OverlayPositionMode::Fixed => config.fixed_position,
+            OverlayPositionMode::Auto => {
+                let window_rects = window
+                    .visible_window_rects_on_monitor(work)
+                    .unwrap_or_default();
+                let focused_editor = window.focused_editable_rect().ok().flatten();
+                let Some(position) = choose_auto_position(
+                    &config,
+                    work,
+                    size,
+                    &window_rects,
+                    focused_editor,
+                    margin,
+                ) else {
+                    window.hide();
+                    if let Ok(mut value) = bounds.write() {
+                        *value = None;
+                    }
+                    return Ok(());
+                };
+                position
+            }
+        }
+    };
+    let raw_origin = calculate_overlay_origin(work, size, position, margin);
+    let origin = if auto_position {
+        raw_origin
+    } else {
+        clamp_origin(work, size, raw_origin)
+    };
     window
         .present_rgba(canvas.data(), width, height, origin.x, origin.y)
         .map_err(|_| OverlayRenderError::PixmapAllocation)?;
@@ -1146,46 +1155,60 @@ fn choose_auto_position(
     config: &OverlayConfig,
     work: WorkArea,
     size: Size,
-    foreground: Option<WorkArea>,
+    windows: &[WorkArea],
+    focused_editor: Option<WorkArea>,
     margin: i32,
-) -> OverlayPosition {
-    let mut candidates = config.allowed_positions.clone();
-    if candidates.is_empty() {
-        candidates.push(config.preferred_position);
+) -> Option<OverlayPosition> {
+    let mut candidates = Vec::with_capacity(config.allowed_positions.len() + 1);
+    candidates.push(config.preferred_position);
+    for position in &config.allowed_positions {
+        if !candidates.contains(position) {
+            candidates.push(*position);
+        }
     }
-    if let Some(index) = candidates
+
+    let valid = candidates.into_iter().filter_map(|position| {
+        let origin = calculate_overlay_origin(work, size, position, margin);
+        let rect = WorkArea {
+            left: origin.x,
+            top: origin.y,
+            right: origin.x.saturating_add(size.width),
+            bottom: origin.y.saturating_add(size.height),
+        };
+        contains_rect(work, rect).then_some((position, rect))
+    });
+    let valid: Vec<_> = valid.collect();
+
+    // 候補群A: 全ての表示Windowと重ならない候補。条件2の順位を混ぜない。
+    if let Some((position, _)) = valid
         .iter()
-        .position(|p| *p == config.preferred_position)
+        .find(|(_, rect)| windows.iter().all(|window| !overlaps(*rect, *window)))
     {
-        let preferred = candidates.remove(index);
-        candidates.insert(0, preferred);
+        return Some(*position);
     }
-    candidates
-        .into_iter()
-        .map(|position| {
-            let origin = clamp_origin(
-                work,
-                size,
-                calculate_overlay_origin(work, size, position, margin),
-            );
-            let rect = WorkArea {
-                left: origin.x,
-                top: origin.y,
-                right: origin.x.saturating_add(size.width),
-                bottom: origin.y.saturating_add(size.height),
-            };
-            let overlap = foreground.map(|fg| overlap_area(rect, fg)).unwrap_or(0);
-            (position, overlap)
-        })
-        .min_by_key(|(_, overlap)| *overlap)
-        .map(|(position, _)| position)
-        .unwrap_or(config.preferred_position)
+
+    // 候補群B: Aが空の場合だけfocused editorとの重複を除外する。
+    if let Some((position, _)) = valid.iter().find(|(_, rect)| {
+        focused_editor
+            .map(|editor| !overlaps(*rect, editor))
+            .unwrap_or(true)
+    }) {
+        return Some(*position);
+    }
+
+    // A/Bが空でもWork Area内の配置順位を維持する。
+    valid.first().map(|(position, _)| *position)
 }
 
-fn overlap_area(a: WorkArea, b: WorkArea) -> i64 {
-    let width = (a.right.min(b.right) - a.left.max(b.left)).max(0) as i64;
-    let height = (a.bottom.min(b.bottom) - a.top.max(b.top)).max(0) as i64;
-    width * height
+fn overlaps(a: WorkArea, b: WorkArea) -> bool {
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
+}
+
+fn contains_rect(work: WorkArea, rect: WorkArea) -> bool {
+    rect.left >= work.left
+        && rect.top >= work.top
+        && rect.right <= work.right
+        && rect.bottom <= work.bottom
 }
 
 fn clamp_origin(work: WorkArea, size: Size, point: Point) -> Point {
@@ -1448,15 +1471,136 @@ mod tests {
                 width: 400,
                 height: 100,
             },
-            Some(WorkArea {
+            &[WorkArea {
                 left: 300,
                 top: 200,
                 right: 1600,
                 bottom: 900,
-            }),
+            }],
+            None,
             32,
-        );
+        )
+        .expect("a non-overlapping position");
         assert_eq!(selected, OverlayPosition::BottomRight);
+    }
+
+    #[test]
+    fn auto_position_condition_a_beats_higher_ranked_condition_b() {
+        let config = OverlayConfig {
+            position_mode: OverlayPositionMode::Auto,
+            allowed_positions: vec![OverlayPosition::TopLeft, OverlayPosition::BottomLeft],
+            preferred_position: OverlayPosition::BottomRight,
+            ..OverlayConfig::default()
+        };
+        let selected = choose_auto_position(
+            &config,
+            WorkArea {
+                left: 0,
+                top: 0,
+                right: 1000,
+                bottom: 800,
+            },
+            Size {
+                width: 200,
+                height: 100,
+            },
+            &[
+                WorkArea {
+                    left: 750,
+                    top: 650,
+                    right: 1000,
+                    bottom: 800,
+                },
+                WorkArea {
+                    left: 0,
+                    top: 0,
+                    right: 250,
+                    bottom: 150,
+                },
+            ],
+            Some(WorkArea {
+                left: 400,
+                top: 650,
+                right: 650,
+                bottom: 800,
+            }),
+            0,
+        )
+        .expect("a condition A position");
+        assert_eq!(selected, OverlayPosition::BottomLeft);
+    }
+
+    #[test]
+    fn auto_position_preserves_preferred_then_saved_order_deterministically() {
+        let config = OverlayConfig {
+            position_mode: OverlayPositionMode::Auto,
+            allowed_positions: vec![OverlayPosition::TopRight, OverlayPosition::TopLeft],
+            preferred_position: OverlayPosition::BottomRight,
+            ..OverlayConfig::default()
+        };
+        let work = WorkArea {
+            left: 0,
+            top: 0,
+            right: 1000,
+            bottom: 800,
+        };
+        let windows = [WorkArea {
+            left: 700,
+            top: 650,
+            right: 1000,
+            bottom: 800,
+        }];
+        let first = choose_auto_position(
+            &config,
+            work,
+            Size {
+                width: 200,
+                height: 100,
+            },
+            &windows,
+            None,
+            0,
+        );
+        let second = choose_auto_position(
+            &config,
+            work,
+            Size {
+                width: 200,
+                height: 100,
+            },
+            &windows,
+            None,
+            0,
+        );
+        assert_eq!(first, Some(OverlayPosition::TopRight));
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn auto_position_rejects_work_area_boundary_overflow() {
+        let config = OverlayConfig {
+            position_mode: OverlayPositionMode::Auto,
+            allowed_positions: vec![OverlayPosition::Center],
+            preferred_position: OverlayPosition::Center,
+            ..OverlayConfig::default()
+        };
+        let selected = choose_auto_position(
+            &config,
+            WorkArea {
+                left: 0,
+                top: 0,
+                right: 100,
+                bottom: 100,
+            },
+            Size {
+                width: 101,
+                height: 20,
+            },
+            &[],
+            None,
+            0,
+        );
+        assert_eq!(selected, None);
     }
 
     #[test]

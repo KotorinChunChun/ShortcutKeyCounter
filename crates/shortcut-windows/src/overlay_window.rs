@@ -14,21 +14,29 @@ use windows::core::{w, BOOL};
 use windows::Win32::Foundation::{
     COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM,
 };
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::Graphics::Gdi::{
-    ClientToScreen, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject,
-    EnumDisplayMonitors, GetDC, GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, ReleaseDC,
-    SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP,
-    HDC, HGDIOBJ, MONITORENUMPROC, MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
+    CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, EnumDisplayMonitors, GetDC,
+    GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, ReleaseDC, SelectObject, BITMAPINFO,
+    BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, DIB_RGB_COLORS, HBITMAP, HDC, HGDIOBJ,
+    MONITORENUMPROC, MONITORINFO, MONITORINFOEXW, MONITOR_DEFAULTTONEAREST,
     MONITOR_DEFAULTTOPRIMARY,
 };
+use windows::Win32::System::Com::{
+    CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Accessibility::{
+    CUIAutomation, IUIAutomation, UIA_ComboBoxControlTypeId, UIA_DocumentControlTypeId,
+    UIA_EditControlTypeId,
+};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetClientRect,
-    GetForegroundWindow, GetWindowRect, PeekMessageW, RegisterClassW, SetWindowLongPtrW,
-    SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindowIndirect, GWLP_HWNDPARENT,
-    HTTRANSPARENT, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, MSG, PM_REMOVE, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA,
+    CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, EnumWindows,
+    GetForegroundWindow, GetWindowRect, IsIconic, IsWindowVisible, PeekMessageW, RegisterClassW,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, UpdateLayeredWindowIndirect,
+    GWLP_HWNDPARENT, HTTRANSPARENT, HWND_NOTOPMOST, HWND_TOP, HWND_TOPMOST, MSG, PM_REMOVE,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNOACTIVATE, ULW_ALPHA,
     UPDATELAYEREDWINDOWINFO, WM_NCHITTEST, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
 };
@@ -64,6 +72,48 @@ pub struct WorkArea {
     pub top: i32,
     pub right: i32,
     pub bottom: i32,
+}
+
+/// Top-level windowの配置判定用snapshot。
+///
+/// `rect`以外の状態も保持しておき、純粋なfilter関数で対象Windowを決める。これにより
+/// Windows APIからの収集と、候補群Aの判定を分離できる。
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WindowRectSnapshot {
+    pub hwnd: isize,
+    pub rect: WorkArea,
+    pub visible: bool,
+    pub minimized: bool,
+    pub cloaked: bool,
+}
+
+/// 配置判定へ渡すWindow矩形をsnapshotから抽出する純粋関数。
+pub fn filter_window_rects(
+    snapshots: &[WindowRectSnapshot],
+    work: WorkArea,
+    excluded_hwnd: Option<isize>,
+) -> Vec<WorkArea> {
+    snapshots
+        .iter()
+        .copied()
+        .filter(|snapshot| {
+            snapshot.visible
+                && !snapshot.minimized
+                && !snapshot.cloaked
+                && excluded_hwnd != Some(snapshot.hwnd)
+                && is_valid_rect(snapshot.rect)
+                && rectangles_intersect(snapshot.rect, work)
+        })
+        .map(|snapshot| snapshot.rect)
+        .collect()
+}
+
+fn is_valid_rect(rect: WorkArea) -> bool {
+    rect.right > rect.left && rect.bottom > rect.top
+}
+
+fn rectangles_intersect(a: WorkArea, b: WorkArea) -> bool {
+    a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -142,6 +192,10 @@ pub enum OverlayWindowError {
     DibCreation(windows::core::Error),
     #[error("overlay monitor information could not be resolved")]
     MonitorInfo,
+    #[error("overlay window snapshot could not be collected")]
+    WindowSnapshot,
+    #[error("focused editable element could not be inspected")]
+    UiAutomation,
     #[error("overlay pixel buffer size is invalid")]
     InvalidBuffer,
     #[error("UpdateLayeredWindow failed")]
@@ -152,6 +206,7 @@ pub struct OverlayWindow {
     hwnd: HWND,
     surface: Option<DibSurface>,
     visible: bool,
+    automation: Option<IUIAutomation>,
 }
 
 impl OverlayWindow {
@@ -198,7 +253,13 @@ impl OverlayWindow {
             hwnd,
             surface: None,
             visible: false,
+            automation: create_ui_automation(),
         })
+    }
+
+    /// Overlay自身のHWND。配置判定の自己除外にだけ使用し、UIへ公開しない。
+    pub fn hwnd_value(&self) -> isize {
+        self.hwnd.0 as isize
     }
 
     pub fn active_monitor_metrics(&self) -> Result<OverlayMonitorMetrics, OverlayWindowError> {
@@ -220,6 +281,72 @@ impl OverlayWindow {
             right: rect.right,
             bottom: rect.bottom,
         })
+    }
+
+    /// 現在Foregroundのmonitorにあるtop-level windowの矩形を取得する。
+    pub fn visible_window_rects_on_target_monitor(
+        &self,
+    ) -> Result<Vec<WorkArea>, OverlayWindowError> {
+        let metrics = self.active_monitor_metrics()?;
+        self.visible_window_rects_on_monitor(WorkArea {
+            left: metrics.work_left,
+            top: metrics.work_top,
+            right: metrics.work_right,
+            bottom: metrics.work_bottom,
+        })
+    }
+
+    /// 指定monitorにあるtop-level windowの最新snapshotを取得する。
+    ///
+    /// 非表示・最小化・cloak済みのwindowは純粋filterで除外し、Overlay自身はHWNDで除外する。
+    pub fn visible_window_rects_on_monitor(
+        &self,
+        work: WorkArea,
+    ) -> Result<Vec<WorkArea>, OverlayWindowError> {
+        let snapshots = enumerate_window_snapshots()?;
+        Ok(filter_window_rects(
+            &snapshots,
+            work,
+            Some(self.hwnd_value()),
+        ))
+    }
+
+    /// UI AutomationのFocused Elementが編集可能領域ならBoundingRectangleを返す。
+    pub fn focused_editable_rect(&self) -> Result<Option<WorkArea>, OverlayWindowError> {
+        let Some(automation) = self.automation.as_ref() else {
+            return Err(OverlayWindowError::UiAutomation);
+        };
+        let focused = unsafe { automation.GetFocusedElement() }
+            .map_err(|_| OverlayWindowError::UiAutomation)?;
+        let control_type = unsafe { focused.CurrentControlType() }
+            .map_err(|_| OverlayWindowError::UiAutomation)?;
+        let editable = control_type == UIA_EditControlTypeId
+            || control_type == UIA_DocumentControlTypeId
+            || control_type == UIA_ComboBoxControlTypeId;
+        if !editable {
+            return Ok(None);
+        }
+        let enabled = unsafe { focused.CurrentIsEnabled() }
+            .map_err(|_| OverlayWindowError::UiAutomation)?
+            .as_bool();
+        let keyboard_focusable = unsafe { focused.CurrentIsKeyboardFocusable() }
+            .map_err(|_| OverlayWindowError::UiAutomation)?
+            .as_bool();
+        let offscreen = unsafe { focused.CurrentIsOffscreen() }
+            .map_err(|_| OverlayWindowError::UiAutomation)?
+            .as_bool();
+        if !enabled || !keyboard_focusable || offscreen {
+            return Ok(None);
+        }
+        let rect = unsafe { focused.CurrentBoundingRectangle() }
+            .map_err(|_| OverlayWindowError::UiAutomation)?;
+        let rect = WorkArea {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+        };
+        Ok(is_valid_rect(rect).then_some(rect))
     }
 
     pub fn fixed_monitor_metrics(
@@ -269,23 +396,9 @@ impl OverlayWindow {
         if foreground.0.is_null() {
             return Err(OverlayWindowError::MonitorInfo);
         }
-        let mut client = RECT::default();
-        unsafe { GetClientRect(foreground, &mut client) }
-            .map_err(OverlayWindowError::WindowCreation)?;
-        let mut origin = POINT { x: 0, y: 0 };
-        if !unsafe { ClientToScreen(foreground, &mut origin) }.as_bool() {
-            return Err(OverlayWindowError::MonitorInfo);
-        }
-        let dpi = unsafe { GetDpiForWindow(foreground) }.max(96);
         Ok((
             foreground.0 as isize,
-            OverlayMonitorMetrics {
-                work_left: origin.x,
-                work_top: origin.y,
-                work_right: origin.x + (client.right - client.left),
-                work_bottom: origin.y + (client.bottom - client.top),
-                dpi,
-            },
+            self.monitor_metrics_for_foreground(foreground)?,
         ))
     }
 
@@ -449,6 +562,70 @@ impl OverlayWindow {
         }
         Ok(())
     }
+}
+
+fn create_ui_automation() -> Option<IUIAutomation> {
+    let initialized = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+    if initialized.is_err() {
+        return None;
+    }
+    unsafe { CoCreateInstance::<_, IUIAutomation>(&CUIAutomation, None, CLSCTX_INPROC_SERVER) }.ok()
+}
+
+struct WindowSnapshotContext {
+    snapshots: Vec<WindowRectSnapshot>,
+}
+
+fn enumerate_window_snapshots() -> Result<Vec<WindowRectSnapshot>, OverlayWindowError> {
+    let mut context = WindowSnapshotContext {
+        snapshots: Vec::new(),
+    };
+    let parameter = LPARAM((&mut context as *mut WindowSnapshotContext) as isize);
+    unsafe { EnumWindows(Some(window_snapshot_callback), parameter) }
+        .map_err(|_| OverlayWindowError::WindowSnapshot)?;
+    Ok(context.snapshots)
+}
+
+unsafe extern "system" fn window_snapshot_callback(hwnd: HWND, parameter: LPARAM) -> BOOL {
+    let context = &mut *(parameter.0 as *mut WindowSnapshotContext);
+    if hwnd.0.is_null() {
+        return BOOL(1);
+    }
+
+    let visible = IsWindowVisible(hwnd).as_bool();
+    let minimized = IsIconic(hwnd).as_bool();
+    let mut rect = RECT::default();
+    if GetWindowRect(hwnd, &mut rect).is_err() {
+        return BOOL(1);
+    }
+
+    // DWM属性取得に失敗した場合はcloak済みと断定せず、配置を塞ぐ側へ倒す。
+    // これはsnapshotを欠落させてウィンドウ上へ表示するより安全な扱いである。
+    let cloaked = if visible && !minimized {
+        let mut value = 0_u32;
+        let result = DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAKED,
+            (&mut value as *mut u32).cast(),
+            size_of::<u32>() as u32,
+        );
+        result.is_ok() && value != 0
+    } else {
+        false
+    };
+    context.snapshots.push(WindowRectSnapshot {
+        hwnd: hwnd.0 as isize,
+        rect: WorkArea {
+            left: rect.left,
+            top: rect.top,
+            right: rect.right,
+            bottom: rect.bottom,
+        },
+        visible,
+        minimized,
+        cloaked,
+    });
+    BOOL(1)
 }
 
 /// 接続中のモニターをWindowsのデバイス名で列挙する。デバイス名は設定ファイルへ保存しても
@@ -638,5 +815,106 @@ mod tests {
             50,
         );
         assert_eq!(point, Point { x: 3930, y: -150 });
+    }
+
+    #[test]
+    fn filter_window_rects_excludes_overlay_itself_and_non_displayed_windows() {
+        let work = WorkArea {
+            left: 0,
+            top: 0,
+            right: 1000,
+            bottom: 800,
+        };
+        let snapshots = [
+            WindowRectSnapshot {
+                hwnd: 10,
+                rect: WorkArea {
+                    left: 0,
+                    top: 0,
+                    right: 300,
+                    bottom: 200,
+                },
+                visible: true,
+                minimized: false,
+                cloaked: false,
+            },
+            WindowRectSnapshot {
+                hwnd: 20,
+                rect: WorkArea {
+                    left: 0,
+                    top: 0,
+                    right: 300,
+                    bottom: 200,
+                },
+                visible: true,
+                minimized: false,
+                cloaked: false,
+            },
+            WindowRectSnapshot {
+                hwnd: 30,
+                rect: WorkArea {
+                    left: 0,
+                    top: 0,
+                    right: 300,
+                    bottom: 200,
+                },
+                visible: false,
+                minimized: false,
+                cloaked: false,
+            },
+            WindowRectSnapshot {
+                hwnd: 40,
+                rect: WorkArea {
+                    left: 0,
+                    top: 0,
+                    right: 300,
+                    bottom: 200,
+                },
+                visible: true,
+                minimized: true,
+                cloaked: false,
+            },
+            WindowRectSnapshot {
+                hwnd: 50,
+                rect: WorkArea {
+                    left: 0,
+                    top: 0,
+                    right: 300,
+                    bottom: 200,
+                },
+                visible: true,
+                minimized: false,
+                cloaked: true,
+            },
+        ];
+
+        assert_eq!(
+            filter_window_rects(&snapshots, work, Some(10)),
+            vec![snapshots[1].rect]
+        );
+    }
+
+    #[test]
+    fn filter_window_rects_ignores_windows_outside_target_monitor() {
+        let work = WorkArea {
+            left: 100,
+            top: 100,
+            right: 900,
+            bottom: 700,
+        };
+        let snapshot = WindowRectSnapshot {
+            hwnd: 10,
+            rect: WorkArea {
+                left: 0,
+                top: 0,
+                right: 100,
+                bottom: 100,
+            },
+            visible: true,
+            minimized: false,
+            cloaked: false,
+        };
+
+        assert!(filter_window_rects(&[snapshot], work, None).is_empty());
     }
 }
