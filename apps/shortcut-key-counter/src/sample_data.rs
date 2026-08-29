@@ -1,4 +1,4 @@
-use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Weekday};
+use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday};
 use rusqlite::{params, Connection, TransactionBehavior};
 use serde::Serialize;
 use thiserror::Error;
@@ -109,6 +109,10 @@ pub fn generate_sample_data(
             tx.execute(
                 "INSERT INTO shortcut_daily(date, shortcut, application, count) VALUES (?1, ?2, ?3, 1)\n                 ON CONFLICT(date, shortcut, application) DO UPDATE SET count = count + 1",
                 params![date.format("%Y-%m-%d").to_string(), shortcut, application],
+            )?;
+            tx.execute(
+                "INSERT INTO shortcut_hourly_summary(date, hour, count) VALUES (?1, ?2, 1)\n                 ON CONFLICT(date, hour) DO UPDATE SET count = count + 1",
+                params![date.format("%Y-%m-%d").to_string(), i64::from(occurred.hour())],
             )?;
             daily_app_counts[day_index][app_index] += 1;
         }
@@ -656,6 +660,15 @@ mod tests {
         assert_eq!(end.signed_duration_since(start).num_days(), 59);
         assert_eq!(end, Local::now().date_naive() - Duration::days(1));
         assert_eq!(result.events_generated, 1_000);
+
+        let hourly_total: i64 = target
+            .query_row(
+                "SELECT COALESCE(SUM(count), 0) FROM shortcut_hourly_summary",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(hourly_total, 1_000);
 
         let usage_days: i64 = target
             .query_row(

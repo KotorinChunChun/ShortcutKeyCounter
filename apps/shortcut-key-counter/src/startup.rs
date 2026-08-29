@@ -64,7 +64,9 @@ pub fn initialize_at(paths: AppPaths) -> Result<StartupContext, StartupError> {
         let _ = logger.record(DiagnosticEvent::MigrationFailed);
         return Err(error.into());
     }
-    logger.record(DiagnosticEvent::MigrationCompleted { schema_version: 1 })?;
+    logger.record(DiagnosticEvent::MigrationCompleted {
+        schema_version: shortcut_storage::migration::CURRENT_SCHEMA_VERSION,
+    })?;
     seed_default_settings(&connection)?;
     seed_default_excluded_apps(&connection)?;
 

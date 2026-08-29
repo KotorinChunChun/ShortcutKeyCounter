@@ -322,11 +322,12 @@ fn backup_database_inner(
     Ok(())
 }
 
-/// shortcut_eventsとshortcut_dailyだけを即時transactionで削除する。
+/// 利用統計を即時transactionで削除する。
 pub fn clear_all_usage_data(connection: &mut Connection) -> Result<ClearResult, MaintenanceError> {
     let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
     let events_deleted = transaction.execute("DELETE FROM shortcut_events", [])? as u64;
     let daily_deleted = transaction.execute("DELETE FROM shortcut_daily", [])? as u64;
+    transaction.execute("DELETE FROM shortcut_hourly_summary", [])?;
     let usage_deleted = transaction.execute("DELETE FROM application_usage_daily", [])? as u64;
     transaction.commit()?;
     Ok(ClearResult {
@@ -379,6 +380,10 @@ pub fn delete_on_or_before(
     )?;
     tx.execute(
         "DELETE FROM shortcut_daily WHERE date <= ?1",
+        [&cutoff_text],
+    )?;
+    tx.execute(
+        "DELETE FROM shortcut_hourly_summary WHERE date <= ?1",
         [&cutoff_text],
     )?;
     tx.execute(
@@ -621,6 +626,13 @@ mod tests {
         let daily: i64 = connection
             .query_row("SELECT COUNT(*) FROM shortcut_daily", [], |row| row.get(0))
             .expect("daily");
+        let hourly: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM shortcut_hourly_summary",
+                [],
+                |row| row.get(0),
+            )
+            .expect("hourly");
         let settings: i64 = connection
             .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))
             .expect("settings");
@@ -629,7 +641,49 @@ mod tests {
             .expect("excluded apps");
         assert_eq!(events, 0);
         assert_eq!(daily, 0);
+        assert_eq!(hourly, 0);
         assert_eq!(settings, 8);
         assert_eq!(excluded, 11);
+    }
+
+    #[test]
+    fn delete_on_or_before_keeps_hourly_rows_after_cutoff_in_sync() {
+        let mut connection = fixture_connection();
+        record_event(
+            &mut connection,
+            &RecordableEvent {
+                occurred_at: NaiveDate::from_ymd_opt(2026, 8, 16)
+                    .expect("date")
+                    .and_hms_opt(9, 0, 0)
+                    .expect("time"),
+                shortcut: "Ctrl+N".to_owned(),
+                application: "Code.exe".to_owned(),
+            },
+        )
+        .expect("event after cutoff");
+
+        let preview = delete_on_or_before(
+            &mut connection,
+            NaiveDate::from_ymd_opt(2026, 8, 15).expect("cutoff"),
+        )
+        .expect("delete");
+        assert_eq!(preview.events, 2);
+
+        let before_cutoff: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM shortcut_hourly_summary WHERE date <= '2026-08-15'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("hourly rows before cutoff");
+        let after_cutoff: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM shortcut_hourly_summary WHERE date = '2026-08-16'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("hourly rows after cutoff");
+        assert_eq!(before_cutoff, 0);
+        assert_eq!(after_cutoff, 1);
     }
 }

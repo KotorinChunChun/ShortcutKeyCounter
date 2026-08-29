@@ -3,9 +3,10 @@ use shortcut_core::model::RecordableEvent;
 
 use crate::repositories::daily_repository::upsert_daily;
 use crate::repositories::event_repository::insert_event;
+use crate::repositories::hourly_repository::upsert_hourly;
 use crate::StorageError;
 
-/// 詳細イベントと日次集計を一つのtransactionで保存する。
+/// 詳細イベントと日次・時間別集計を一つのtransactionで保存する。
 pub fn record_event(
     connection: &mut Connection,
     event: &RecordableEvent,
@@ -13,6 +14,7 @@ pub fn record_event(
     let transaction = connection.transaction()?;
     insert_event(&transaction, event)?;
     upsert_daily(&transaction, event)?;
+    upsert_hourly(&transaction, event)?;
     transaction.commit()?;
     Ok(())
 }
@@ -51,9 +53,17 @@ mod tests {
         let daily: i64 = connection
             .query_row("SELECT count FROM shortcut_daily", [], |row| row.get(0))
             .expect("daily count");
+        let hourly: i64 = connection
+            .query_row(
+                "SELECT count FROM shortcut_hourly_summary",
+                [],
+                |row| row.get(0),
+            )
+            .expect("hourly count");
 
         assert_eq!(events, 2);
         assert_eq!(daily, 2);
+        assert_eq!(hourly, 2);
     }
 
     #[test]
@@ -79,5 +89,26 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM shortcut_events", [], |row| row.get(0))
             .expect("event count");
         assert_eq!(events, 0);
+    }
+
+    #[test]
+    fn failed_hourly_write_rolls_back_event_and_daily_inserts() {
+        let mut connection = Connection::open_in_memory().expect("in-memory database");
+        run_migrations(&mut connection).expect("migration");
+        connection
+            .execute("DROP TABLE shortcut_hourly_summary", [])
+            .expect("drop hourly table");
+
+        let result = record_event(&mut connection, &test_event());
+        assert!(result.is_err());
+
+        let events: i64 = connection
+            .query_row("SELECT COUNT(*) FROM shortcut_events", [], |row| row.get(0))
+            .expect("event count");
+        let daily: i64 = connection
+            .query_row("SELECT COUNT(*) FROM shortcut_daily", [], |row| row.get(0))
+            .expect("daily count");
+        assert_eq!(events, 0);
+        assert_eq!(daily, 0);
     }
 }
