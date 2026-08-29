@@ -597,7 +597,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_overlay_config_matches_v011_behavior() {
+    fn default_overlay_config_uses_bottom_corner_avoidance_positions() {
         let config = OverlayConfig::default();
         assert_eq!(config.display_duration_ms, 1840);
         assert_eq!(config.max_rows, 3);
