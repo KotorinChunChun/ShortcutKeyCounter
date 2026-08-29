@@ -16,6 +16,8 @@
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font-family: "Segoe UI", "Yu Gothic UI", sans-serif; }
+  /* The root zoom keeps the entire application chrome, content, and dialogs in sync. */
+  html { zoom: 1; }
   button, input, select { font: inherit; }
   button { color: inherit; }
   .app { min-height: 100vh; display: grid; grid-template-columns: 238px 1fr; }

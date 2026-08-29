@@ -51,8 +51,43 @@ function applyTheme(theme: Theme): void {
   window.localStorage.setItem('shortcut-key-counter-theme', theme)
 }
 
+const uiScaleSteps = [0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
+const uiScaleStorageKey = 'shortcut-key-counter-ui-scale'
+const minUiScale = uiScaleSteps[0] ?? 1
+const maxUiScale = uiScaleSteps[uiScaleSteps.length - 1] ?? 1
+let uiScale = 1
+
+function applyUiScale(scale: number): void {
+  uiScale = Math.min(Math.max(scale, minUiScale), maxUiScale)
+  document.documentElement.style.zoom = String(uiScale)
+  window.localStorage.setItem(uiScaleStorageKey, String(uiScale))
+}
+
+function loadUiScale(): void {
+  const cached = Number(window.localStorage.getItem(uiScaleStorageKey))
+  if (Number.isFinite(cached) && uiScaleSteps.includes(cached)) applyUiScale(cached)
+  else applyUiScale(1)
+}
+
+function changeUiScale(direction: -1 | 1): void {
+  const currentIndex = uiScaleSteps.reduce((closest, value, index) => Math.abs(value - uiScale) < Math.abs((uiScaleSteps[closest] ?? 1) - uiScale) ? index : closest, 0)
+  const nextIndex = Math.min(Math.max(currentIndex + direction, 0), uiScaleSteps.length - 1)
+  applyUiScale(uiScaleSteps[nextIndex] ?? uiScale)
+}
+
+function handleUiZoomShortcut(event: KeyboardEvent): void {
+  if (!event.ctrlKey || event.altKey || event.metaKey) return
+  const isPlus = event.key === '+' || (event.code === 'Equal' && event.shiftKey)
+  const isMinus = event.key === '-' || event.code === 'Minus'
+  if (!isPlus && !isMinus) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  changeUiScale(isPlus ? 1 : -1)
+}
+
 const cachedTheme = window.localStorage.getItem('shortcut-key-counter-theme')
 if (cachedTheme === 'dark' || cachedTheme === 'light') applyTheme(cachedTheme)
+loadUiScale()
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id)
@@ -1000,6 +1035,7 @@ async function withButton(button: HTMLButtonElement, action: () => Promise<void>
 }
 
 function bindEvents(): void {
+  window.addEventListener('keydown', handleUiZoomShortcut, true)
   document.querySelectorAll<HTMLButtonElement>('.nav button').forEach(button => button.addEventListener('click', () => {
     if (button.dataset.page) goPage(button.dataset.page)
   }))
