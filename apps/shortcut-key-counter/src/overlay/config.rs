@@ -549,17 +549,9 @@ fn default_max_window_width() -> u32 {
 }
 
 fn default_allowed_positions() -> Vec<OverlayPosition> {
-    vec![
-        OverlayPosition::TopLeft,
-        OverlayPosition::TopCenter,
-        OverlayPosition::TopRight,
-        OverlayPosition::MiddleLeft,
-        OverlayPosition::Center,
-        OverlayPosition::MiddleRight,
-        OverlayPosition::BottomLeft,
-        OverlayPosition::BottomCenter,
-        OverlayPosition::BottomRight,
-    ]
+    // Active-window avoidance starts with the two least intrusive bottom corners.
+    // Users can still opt into any of the other positions from the settings UI.
+    vec![OverlayPosition::BottomLeft, OverlayPosition::BottomRight]
 }
 
 fn position_order(position: OverlayPosition) -> u8 {
@@ -610,6 +602,10 @@ mod tests {
         assert_eq!(config.display_duration_ms, 1840);
         assert_eq!(config.max_rows, 3);
         assert_eq!(config.fixed_position, OverlayPosition::BottomCenter);
+        assert_eq!(
+            config.allowed_positions,
+            vec![OverlayPosition::BottomLeft, OverlayPosition::BottomRight]
+        );
         assert_eq!(config.display_mode, OverlayDisplayMode::Desktop);
         assert_eq!(config.monitor_mode, OverlayMonitorMode::ActiveWindow);
         assert!(config.fixed_monitor_id.is_empty());

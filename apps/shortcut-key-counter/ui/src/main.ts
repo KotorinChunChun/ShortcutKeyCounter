@@ -767,7 +767,7 @@ function keyActionOptionsHtml(selected: KeyAction, allowRecord: boolean): string
 function renderKeyMapping(mapping: KeyMapping, policy: KeyPolicy, labels: OverlayKeyLabels): void {
   currentKeyMapping = structuredClone(mapping); currentKeyPolicy = structuredClone(policy); currentOverlayLabels = structuredClone(labels)
   const head = el<HTMLTableSectionElement>('keyPolicyMatrixHead'); const body = el<HTMLTableSectionElement>('keyPolicyMatrixBody')
-  head.innerHTML = `<tr><th class="key-code-col">キーコード</th><th class="key-name-col">キー名</th><th class="key-label-col">オーバーレイ表示名</th><th class="key-category-col">分類</th>${modifierPatterns.map(pattern => `<th class="key-policy-pattern ${selectedModifierColumns.has(pattern.id) ? 'selected-column' : ''}" data-pattern="${pattern.id}" title="クリックで一括変更対象列を選択">${escapeHtml(pattern.label)}</th>`).join('')}</tr>`
+  head.innerHTML = `<tr><th class="key-code-col">キーコード</th><th class="key-name-col">テキス名</th><th class="key-label-col">オーバーレイ表示名</th><th class="key-category-col">分類</th>${modifierPatterns.map(pattern => `<th class="key-policy-pattern ${selectedModifierColumns.has(pattern.id) ? 'selected-column' : ''}" data-pattern="${pattern.id}" title="クリックで一括変更対象列を選択">${escapeHtml(pattern.label)}</th>`).join('')}</tr>`
   const rows = policyRows(mapping)
   body.innerHTML = rows.map(row => `<tr data-category="${row.category}" data-key="${escapeHtml(row.key)}"><td class="key-code-col key-code-text">${escapeHtml(row.code)}</td><th class="key-name-col">${escapeHtml(row.label)}</th><td class="key-label-col"><input class="input key-label-input" data-key-label="${escapeHtml(row.key)}" value="${escapeHtml(labels.keys[row.key] ?? row.key)}" /></td><td class="key-category-col"><span class="category-pill">${escapeHtml(row.categoryLabel)}</span></td>${modifierPatterns.map(pattern => {
     const identity = policyIdentity(pattern, row.key); const fallback = defaultPolicyAction(policy, pattern); const selected = policy.overrides[identity] ?? fallback; const selectedColumn = selectedModifierColumns.has(pattern.id)
@@ -813,11 +813,11 @@ function updateMappingSelectionStyles(): void {
 function updateMappingSummary(): void {
   updateMappingSelectionStyles()
 }
-function bulkMappingChange(action: 'record' | 'ignore' | 'reset'): void {
+function bulkMappingChange(action: KeyAction | 'reset'): void {
   const rows = visibleMappingRows(); const patterns = modifierPatterns.filter(pattern => selectedModifierColumns.has(pattern.id))
   if (!rows.length) return showToast('現在表示中のキーがありません。')
   if (!patterns.length) return showToast('一括変更する修飾パターン列を見出しから選択してください。')
-  const operation = action === 'record' ? '表示＋記録' : action === 'ignore' ? 'すべて非表示' : '既定値復元'
+  const operation = action === 'continue_display' ? '続けて表示' : action === 'record_and_display_break' ? '記録と表示改行' : action === 'ignore' ? 'すべて非表示' : action === 'reset' ? '既定に戻す' : 'すべて表示'
   const cells = rows.length * patterns.length
   if (!window.confirm(`${operation}を実行しますか？
 対象行: ${rows.length}
@@ -827,9 +827,8 @@ function bulkMappingChange(action: 'record' | 'ignore' | 'reset'): void {
 この操作は多数の設定を変更します。`)) return
   for (const row of rows) for (const pattern of patterns) {
     const select = row.querySelector<HTMLSelectElement>(`select[data-pattern="${pattern.id}"]`); if (!select) continue
-    if (action === 'ignore') select.value = 'ignore'
-    else if (action === 'reset') select.value = select.dataset.policyDefault ?? (pattern.id === 'none' ? 'continue_display' : 'record_and_display_break')
-    else select.value = pattern.id === 'none' ? 'display_break' : 'record_and_display_break'
+    if (action === 'reset') select.value = select.dataset.policyDefault ?? (pattern.id === 'none' ? 'continue_display' : 'record_and_display_break')
+    else select.value = pattern.id === 'none' ? safeSingleAction(action) : action
   }
   updateMappingSummary()
 }
@@ -1332,7 +1331,9 @@ function bindEvents(): void {
     button.classList.toggle('active', activeMappingCategories.has(category)); applyMappingFilters()
   })
   el<HTMLButtonElement>('mappingKeySearch').addEventListener('click', () => void searchMappingPhysicalKey())
-  el<HTMLButtonElement>('mappingEnableAll').addEventListener('click', () => bulkMappingChange('record'))
+  el<HTMLButtonElement>('mappingEnableAll').addEventListener('click', () => bulkMappingChange('record_and_display_break'))
+  el<HTMLButtonElement>('mappingContinueDisplay').addEventListener('click', () => bulkMappingChange('continue_display'))
+  el<HTMLButtonElement>('mappingRecordDisplay').addEventListener('click', () => bulkMappingChange('record_and_display_break'))
   el<HTMLButtonElement>('mappingDisableAll').addEventListener('click', () => bulkMappingChange('ignore'))
   el<HTMLButtonElement>('mappingReset').addEventListener('click', () => bulkMappingChange('reset'))
   el<HTMLButtonElement>('mappingSave').addEventListener('click', event => void withButton(event.currentTarget as HTMLButtonElement, async () => {

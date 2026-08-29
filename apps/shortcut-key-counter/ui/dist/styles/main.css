@@ -85,6 +85,8 @@
   .pill { display:inline-block; padding:3px 7px; border-radius:99px; border:1px solid var(--line); color:var(--muted); font-size:10px; }
   .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
   .input, .select { background:#0e151e; border:1px solid var(--line); color:var(--text); border-radius:7px; padding:8px 9px; outline:none; }
+  /* Native option popups do not always inherit the select text color on Windows. */
+  select option, select optgroup { background:var(--panel); color:var(--text); }
   .input:focus,.select:focus { border-color:var(--accent); }
   .btn { border:1px solid var(--line); background:#182230; padding:8px 11px; border-radius:7px; cursor:pointer; }
   .btn:hover { background:#202d3d; }
@@ -239,6 +241,7 @@
 
 /* Light theme */
 :root[data-theme="light"] {
+  color-scheme: light;
   --bg:#f4f7fb;
   --panel:#ffffff;
   --panel-2:#f3f6fa;
@@ -263,6 +266,8 @@
 :root[data-theme="light"] .input,
 :root[data-theme="light"] .select,
 :root[data-theme="light"] .keymap-item { background:#f7f9fc; }
+:root[data-theme="light"] select option,
+:root[data-theme="light"] select optgroup { background:#f7f9fc; color:#172033; }
 :root[data-theme="light"] .segmented button.active { background:#dbeafe; color:#174ea6; }
 :root[data-theme="light"] .table td { border-bottom-color:#e5eaf1; }
 :root[data-theme="light"] .key { background:#eef3f8; border-color:#c7d2df; border-bottom-color:#aebccc; color:#26364c; }
