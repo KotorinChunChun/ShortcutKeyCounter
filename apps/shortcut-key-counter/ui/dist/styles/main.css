@@ -167,6 +167,11 @@
 .page-busy { opacity:.68; pointer-events:none; }
 .card-value.small { font-size:20px; }
 .chart .day span { min-height:2px; }
+.chart.hourly-chart { gap:2px; }
+.chart .hour { flex:1; min-width:8px; height:100%; display:flex; align-items:flex-end; justify-content:center; position:relative; z-index:2; }
+.chart .hour span { width:72%; max-width:16px; min-width:2px; background:linear-gradient(180deg,var(--accent-2),var(--accent)); border-radius:4px 4px 2px 2px; display:block; transition:.2s; }
+.chart .hour:hover span { filter:brightness(1.2); }
+.chart .hour label { position:absolute; top:calc(100% + 7px); color:var(--muted); font-size:8px; white-space:nowrap; }
 .clickable { cursor:pointer; }
 .clickable:hover { background:#151f2b; }
 

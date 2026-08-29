@@ -20,6 +20,7 @@ export const api = {
     applicationRanking: (start, end, limit) => invoke('get_application_ranking', { start, end, limit }),
     applicationStatistics: (start, end) => invoke('get_application_statistics', { start, end }),
     dailyTrend: (start, end, shortcut = null, application = null) => invoke('get_daily_trend', { start, end, shortcut, application }),
+    hourlyTrend: (start, end) => invoke('get_hourly_trend', { start, end }),
     shortcutDetail: (shortcut, start, end) => invoke('get_shortcut_detail', { shortcut, start, end }),
     listShortcuts: (start, end) => invoke('list_shortcuts', { start, end }),
     dataBounds: () => invoke('get_data_bounds'),

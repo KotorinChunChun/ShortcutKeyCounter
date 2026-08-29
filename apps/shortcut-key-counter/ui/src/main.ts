@@ -1,6 +1,6 @@
 import { api } from './api.js'
 import type {
-  ApplicationStats, CaptureHealth, CaptureStatus, DailyPoint, DateRange, ExcludedApp,
+  ApplicationStats, CaptureHealth, CaptureStatus, DailyPoint, DateRange, ExcludedApp, HourlyTrend,
   RangeKey, SettingsSnapshot, ShortcutRankingRow, KeyMapping, RealtimeLogEntry, AppInfo, Theme,
   OverlaySettings, OverlayPosition, OverlayPositionMode, OverlayDisplayMode, OverlayMonitorMode,
   OverlayMonitor, KeyAction, KeyPolicy, OverlayKeyLabels, KeyboardLayout, DatabaseEnvironmentSnapshot, DatabaseEnvironment,
@@ -179,6 +179,35 @@ function renderChart(container: HTMLElement, points: DailyPoint[]): void {
   }).join('')
 }
 
+function dashboardTrendTitle(range: RangeKey): string {
+  if (range === 'today') return '今日の時間帯別利用状況'
+  if (range === '7') return '過去7日間の時間帯別利用状況'
+  if (range === '30') return '過去30日間の時間帯別利用状況'
+  return '全期間の時間帯別利用状況'
+}
+
+function dashboardTrendLabel(range: DateRange, firstDate: string | null, totalCount: number): string {
+  const label = rangeLabel(range)
+  if (firstDate && range.start < firstDate) return `${label}（時間別集計は${firstDate}以降）`
+  if (!firstDate && totalCount > 0) return `${label}（時間別集計は保持されていません）`
+  return label
+}
+
+function renderHourlyChart(container: HTMLElement, trend: HourlyTrend): void {
+  const points = trend.points
+  if (!points.length) {
+    container.innerHTML = '<div class="empty" style="width:100%">データがありません。</div>'
+    return
+  }
+  container.classList.add('hourly-chart')
+  const max = Math.max(...points.map(point => point.count), 1)
+  container.innerHTML = points.map(point => {
+    const label = `${String(point.hour).padStart(2, '0')}:00`
+    const height = point.count === 0 ? 1 : Math.max(3, point.count / max * 100)
+    return `<div class="hour" title="${escapeHtml(label)}: ${formatNumber(point.count)}"><span style="height:${height}%"></span><label>${escapeHtml(label)}</label></div>`
+  }).join('')
+}
+
 async function refreshCaptureStatus(): Promise<void> {
   try {
     const [status, health] = await Promise.all([api.captureStatus(), api.captureHealth()])
@@ -203,10 +232,11 @@ function renderCaptureStatus(status: CaptureStatus, health: CaptureHealth): void
 }
 
 async function loadDashboard(): Promise<void> {
-  const range = await resolveRange(rangeState.dashboard ?? 'today')
+  const selectedRange = rangeState.dashboard ?? 'today'
+  const range = await resolveRange(selectedRange)
   const [summary, trend, apps, shortcuts] = await Promise.all([
     api.dashboard(range.start, range.end),
-    api.dailyTrend(range.start, range.end),
+    api.hourlyTrend(range.start, range.end),
     api.applicationRanking(range.start, range.end, 4),
     api.shortcutRankingExtended(range.start, range.end, null, 5),
   ])
@@ -220,8 +250,9 @@ async function loadDashboard(): Promise<void> {
     <div class="card"><div class="card-label">ユニークショートカット</div><div class="card-value">${formatNumber(summary.unique_shortcuts)}</div><div class="card-note">選択期間の種類数</div></div>
     <div class="card"><div class="card-label">利用アプリ</div><div class="card-value">${formatNumber(summary.unique_applications)}</div><div class="card-note">記録対象アプリ数</div></div>
     <div class="card"><div class="card-label">最多ショートカット</div><div class="card-value small">${summary.top_shortcut ? kbd(summary.top_shortcut.shortcut) : '—'}</div><div class="card-note">${summary.top_shortcut ? `${formatNumber(summary.top_shortcut.count)}回${topApp ? ` / ${escapeHtml(topApp)}` : ''}` : 'データなし'}</div></div>`
-  el<HTMLSpanElement>('dashboardTrendLabel').textContent = rangeLabel(range)
-  renderChart(el('dashboardTrend'), trend)
+  el<HTMLHeadingElement>('dashboardTrendTitle').textContent = dashboardTrendTitle(selectedRange)
+  el<HTMLSpanElement>('dashboardTrendLabel').textContent = dashboardTrendLabel(range, trend.first_date, summary.total_count)
+  renderHourlyChart(el('dashboardTrend'), trend)
   renderBars(el('dashboardApps'), apps.map(row => ({ name: row.application, count: row.count })))
   renderShortcutRanking(el('dashboardRanking'), shortcuts)
 }

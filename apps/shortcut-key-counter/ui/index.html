@@ -44,7 +44,7 @@
         <div class="page-head"><div><h2>ショートカット利用状況</h2><p>ローカルSQLiteから集計しています。</p></div><div class="segmented range-control" data-page-range="dashboard"><button data-range="today" class="active">今日</button><button data-range="7">7日</button><button data-range="30">30日</button><button data-range="all">全期間</button></div></div>
         <div class="cards" id="dashboardCards"></div>
         <div class="layout-2">
-          <div class="panel"><div class="panel-head"><h3>日別利用推移</h3><small id="dashboardTrendLabel"></small></div><div class="chart" id="dashboardTrend"></div></div>
+          <div class="panel"><div class="panel-head"><h3 id="dashboardTrendTitle">今日の時間帯別利用状況</h3><small id="dashboardTrendLabel"></small></div><div class="chart" id="dashboardTrend"></div></div>
           <div class="panel"><div class="panel-head"><h3>アプリ別ランキング</h3><small>選択期間</small></div><div class="apps" id="dashboardApps"></div></div>
         </div>
         <div class="panel" style="margin-top:12px"><div class="panel-head"><h3>キー別ランキング</h3><button class="btn ghost" id="showAllRanking">すべて表示 →</button></div><table class="table"><thead><tr><th>#</th><th>Shortcut</th><th>Count</th><th>利用アプリ</th><th>比率</th></tr></thead><tbody id="dashboardRanking"></tbody></table></div>

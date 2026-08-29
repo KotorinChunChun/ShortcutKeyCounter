@@ -1,6 +1,6 @@
 import type {
   AppPaths, ApplicationStats, BackupResult, CaptureHealth, CaptureStatus, ClearResult,
-  DailyPoint, DashboardSummary, DataBounds, ExcludedApp, ExportResult, RankedApplication,
+  DailyPoint, DashboardSummary, DataBounds, ExcludedApp, ExportResult, HourlyTrend, RankedApplication,
   RankedShortcut, SettingsSnapshot, ShortcutDetail, ShortcutRankingRow, KeyMapping,
   KeyMappingExportResult, RealtimeLogEntry, AppInfo, Theme, OverlaySettings, KeyPolicy,
   OverlayMonitor, OverlayKeyLabels, KeyboardLayout, DatabaseEnvironment, DatabaseEnvironmentSnapshot, SampleSourceStatus,
@@ -40,6 +40,7 @@ export const api = {
   applicationRanking: (start: string, end: string, limit: number) => invoke<RankedApplication[]>('get_application_ranking', { start, end, limit }),
   applicationStatistics: (start: string, end: string) => invoke<ApplicationStats[]>('get_application_statistics', { start, end }),
   dailyTrend: (start: string, end: string, shortcut: string | null = null, application: string | null = null) => invoke<DailyPoint[]>('get_daily_trend', { start, end, shortcut, application }),
+  hourlyTrend: (start: string, end: string) => invoke<HourlyTrend>('get_hourly_trend', { start, end }),
   shortcutDetail: (shortcut: string, start: string, end: string) => invoke<ShortcutDetail>('get_shortcut_detail', { shortcut, start, end }),
   listShortcuts: (start: string, end: string) => invoke<RankedShortcut[]>('list_shortcuts', { start, end }),
   dataBounds: () => invoke<DataBounds>('get_data_bounds'),

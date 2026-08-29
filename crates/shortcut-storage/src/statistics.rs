@@ -69,6 +69,18 @@ pub struct DailyPoint {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HourlyPoint {
+    pub hour: u8,
+    pub count: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HourlyTrend {
+    pub points: Vec<HourlyPoint>,
+    pub first_date: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct DashboardSummary {
     pub total_count: i64,
     pub unique_shortcuts: i64,
@@ -322,6 +334,53 @@ pub fn get_daily_trend(
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
+/// 指定期間の時間別集計を00時から23時まで欠損なく返す。
+///
+/// `first_date`は時間別集計を保持している最初の日付で、日次集計しか
+/// 存在しないv0.1.5以前の期間をUIが注記するために使用する。
+pub fn get_hourly_trend(
+    connection: &Connection,
+    range: &DateRange,
+) -> Result<HourlyTrend, StorageError> {
+    let start = range.start_text();
+    let end = range.end_text();
+    let mut counts = [0_i64; 24];
+    let mut statement = connection.prepare(
+        "SELECT hour, SUM(count) AS total
+         FROM shortcut_hourly_summary
+         WHERE date >= ?1 AND date <= ?2
+         GROUP BY hour
+         ORDER BY hour ASC",
+    )?;
+    let rows = statement.query_map(params![start, end], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
+    })?;
+    for row in rows {
+        let (hour, count) = row?;
+        if let Ok(index) = usize::try_from(hour) {
+            if let Some(slot) = counts.get_mut(index) {
+                *slot = count;
+            }
+        }
+    }
+    let first_date: Option<String> = connection.query_row(
+        "SELECT MIN(date) FROM shortcut_hourly_summary",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(HourlyTrend {
+        points: counts
+            .into_iter()
+            .enumerate()
+            .map(|(hour, count)| HourlyPoint {
+                hour: hour as u8,
+                count,
+            })
+            .collect(),
+        first_date,
+    })
+}
+
 pub fn get_shortcut_detail(
     connection: &Connection,
     shortcut: &str,
@@ -573,6 +632,19 @@ mod tests {
         assert!(list_shortcuts(&connection, &range())
             .expect("catalog")
             .is_empty());
+    }
+
+    #[test]
+    fn hourly_trend_returns_all_hours_and_retained_data_start() {
+        let connection = seed_events();
+        let trend = get_hourly_trend(&connection, &range()).expect("hourly trend");
+
+        assert_eq!(trend.first_date, Some("2026-08-15".to_owned()));
+        assert_eq!(trend.points.len(), 24);
+        assert_eq!(trend.points.first(), Some(&HourlyPoint { hour: 0, count: 0 }));
+        assert_eq!(trend.points[9], HourlyPoint { hour: 9, count: 9 });
+        assert_eq!(trend.points.last(), Some(&HourlyPoint { hour: 23, count: 0 }));
+        assert_eq!(trend.points.iter().map(|point| point.count).sum::<i64>(), 9);
     }
 
     #[test]

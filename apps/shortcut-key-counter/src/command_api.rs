@@ -11,9 +11,10 @@ use shortcut_storage::repositories::excluded_app_repository::{
 };
 use shortcut_storage::statistics::{
     get_application_ranking, get_application_statistics, get_daily_trend, get_dashboard_summary,
-    get_data_bounds, get_shortcut_detail, get_shortcut_ranking, get_shortcut_ranking_extended,
-    list_shortcuts, ApplicationStats, DailyPoint, DashboardSummary, DataBounds, DateRange,
-    RankedApplication, RankedShortcut, ShortcutDetail, ShortcutRankingRow,
+    get_data_bounds, get_hourly_trend, get_shortcut_detail, get_shortcut_ranking,
+    get_shortcut_ranking_extended, list_shortcuts, ApplicationStats, DailyPoint, DashboardSummary,
+    DataBounds, DateRange, HourlyTrend, RankedApplication, RankedShortcut, ShortcutDetail,
+    ShortcutRankingRow,
 };
 use shortcut_storage::StorageError;
 
@@ -213,6 +214,15 @@ pub fn daily_trend(
 ) -> Result<Vec<DailyPoint>, StorageError> {
     let range = DateRange::new(start, end)?;
     get_daily_trend(connection, &range, shortcut, application)
+}
+
+pub fn hourly_trend(
+    connection: &Connection,
+    start: NaiveDate,
+    end: NaiveDate,
+) -> Result<HourlyTrend, StorageError> {
+    let range = DateRange::new(start, end)?;
+    get_hourly_trend(connection, &range)
 }
 
 pub fn shortcut_detail(

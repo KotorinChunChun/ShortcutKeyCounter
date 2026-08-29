@@ -50,6 +50,8 @@ export interface RankedShortcut { shortcut: string; count: number }
 export interface ShortcutRankingRow extends RankedShortcut { application_count: number }
 export interface RankedApplication { application: string; count: number }
 export interface DailyPoint { date: string; count: number }
+export interface HourlyPoint { hour: number; count: number }
+export interface HourlyTrend { points: HourlyPoint[]; first_date: string | null }
 export interface DashboardSummary { total_count: number; unique_shortcuts: number; unique_applications: number; top_shortcut: RankedShortcut | null }
 export interface ApplicationStats { application: string; count: number; unique_shortcuts: number; most_used_shortcut: string | null; active_seconds: number }
 export interface ShortcutDetail { shortcut: string; total_count: number; applications: RankedApplication[]; daily: DailyPoint[] }

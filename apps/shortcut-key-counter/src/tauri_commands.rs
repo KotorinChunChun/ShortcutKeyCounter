@@ -6,7 +6,7 @@ use shortcut_core::key_mapping::KeyMapping;
 use shortcut_storage::repositories::excluded_app_repository::ExcludedApp;
 use shortcut_storage::statistics::{
     ApplicationStats, DailyPoint, DashboardSummary, DataBounds, RankedApplication, RankedShortcut,
-    ShortcutDetail, ShortcutRankingRow,
+    HourlyTrend, ShortcutDetail, ShortcutRankingRow,
 };
 use std::collections::BTreeMap;
 use tauri::{AppHandle, Manager, State};
@@ -184,6 +184,18 @@ pub fn get_daily_trend(
     let db = db_lock(&state)?;
     command_api::daily_trend(&db, start, end, shortcut.as_deref(), application.as_deref())
         .map_err(|_| CommandError::db())
+}
+
+#[tauri::command]
+pub fn get_hourly_trend(
+    state: State<'_, AppState>,
+    start: String,
+    end: String,
+) -> Result<HourlyTrend, CommandError> {
+    let start = parse_date(&start)?;
+    let end = parse_date(&end)?;
+    let db = db_lock(&state)?;
+    command_api::hourly_trend(&db, start, end).map_err(|_| CommandError::db())
 }
 
 #[tauri::command]

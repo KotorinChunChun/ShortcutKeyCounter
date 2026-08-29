@@ -119,6 +119,7 @@ fn main() {
             tauri_commands::get_application_ranking,
             tauri_commands::get_application_statistics,
             tauri_commands::get_daily_trend,
+            tauri_commands::get_hourly_trend,
             tauri_commands::get_shortcut_detail,
             tauri_commands::list_shortcuts,
             tauri_commands::get_data_bounds,
