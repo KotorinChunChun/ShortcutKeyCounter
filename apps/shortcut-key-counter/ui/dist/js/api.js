@@ -44,6 +44,7 @@ export const api = {
     setOverlaySettings: (settings) => invoke('set_overlay_settings', { settings }),
     overlayKeyLabels: () => invoke('get_overlay_key_labels'),
     setOverlayKeyLabels: (labels) => invoke('set_overlay_key_labels', { labels }),
+    setOverlayKeyboardLayout: (layout) => invoke('set_overlay_keyboard_layout', { layout }),
     overlayKeyPolicy: () => invoke('get_overlay_key_policy'),
     setOverlayKeyPolicy: (policy) => invoke('set_overlay_key_policy', { policy }),
     reloadOverlayAssets: () => invoke('reload_overlay_assets'),

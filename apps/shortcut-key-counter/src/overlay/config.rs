@@ -304,11 +304,28 @@ impl OverlayConfig {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct OverlayKeyLabels {
     pub version: u32,
+    #[serde(default)]
+    pub keyboard_layout: KeyboardLayout,
     pub keys: BTreeMap<String, String>,
+}
+
+/// オーバーレイ表示名の既定値に使用するキーボード配列。
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyboardLayout {
+    #[default]
+    Japanese109,
+    Us104,
 }
 
 impl Default for OverlayKeyLabels {
     fn default() -> Self {
+        Self::for_layout(KeyboardLayout::default())
+    }
+}
+
+impl OverlayKeyLabels {
+    pub fn for_layout(keyboard_layout: KeyboardLayout) -> Self {
         let mut keys = BTreeMap::new();
         for (_, name) in key_catalog() {
             keys.insert(name.clone(), name);
@@ -326,16 +343,40 @@ impl Default for OverlayKeyLabels {
         ] {
             keys.insert(name.to_owned(), name.to_owned());
         }
-        Self { version: 2, keys }
+        if keyboard_layout == KeyboardLayout::Japanese109 {
+            apply_japanese109_defaults(&mut keys);
+        }
+        Self {
+            version: 2,
+            keyboard_layout,
+            keys,
+        }
     }
-}
 
-impl OverlayKeyLabels {
     pub fn merge_with_defaults(mut saved: Self) -> Self {
-        let mut current = Self::default();
+        let mut current = Self::for_layout(saved.keyboard_layout);
         current.keys.append(&mut saved.keys);
         current.version = 2;
         current
+    }
+
+    /// 配列変更時に、旧配列の既定値だけを新配列の既定値へ置換する。
+    /// ユーザーが編集した表示名は保持する。
+    pub fn with_layout(mut self, keyboard_layout: KeyboardLayout) -> Self {
+        if self.keyboard_layout == keyboard_layout {
+            return Self::merge_with_defaults(self);
+        }
+        let old_defaults = Self::for_layout(self.keyboard_layout).keys;
+        let new_defaults = Self::for_layout(keyboard_layout).keys;
+        for (key, old_label) in old_defaults {
+            if self.keys.get(&key) == Some(&old_label) {
+                if let Some(new_label) = new_defaults.get(&key) {
+                    self.keys.insert(key, new_label.clone());
+                }
+            }
+        }
+        self.keyboard_layout = keyboard_layout;
+        Self::merge_with_defaults(self)
     }
 
     pub fn display<'a>(&'a self, internal: &'a str) -> &'a str {
@@ -343,6 +384,35 @@ impl OverlayKeyLabels {
             .get(internal)
             .map(String::as_str)
             .unwrap_or(internal)
+    }
+}
+
+fn apply_japanese109_defaults(keys: &mut BTreeMap<String, String>) {
+    // Windows VK names remain stable internal identities; only the
+    // user-facing overlay labels change for the Japanese 109-key layout.
+    let overrides = [
+        ("Cancel", "Break"),
+        ("Kana", "かな"),
+        ("Kanji", "Alt+半角／全角"),
+        ("Convert", "変換"),
+        ("NonConvert", "無変換"),
+        ("Semicolon", "コロン"),
+        ("Equal", "セミコロン"),
+        ("Backquote", "＠"),
+        ("LeftBracket", "［"),
+        ("Backslash", "￥"),
+        ("RightBracket", "］"),
+        ("Quote", "＾"),
+        ("Oem102", "＼"),
+        ("OemAttn", "英数"),
+        ("OemCopy", "カタカナ／ひらがな"),
+        ("OemAuto", "半角／全角"),
+        ("OemBackTab", "Alt+カタカナ／ひらがな"),
+    ];
+    for (key, label) in overrides {
+        if keys.contains_key(key) {
+            keys.insert(key.to_owned(), label.to_owned());
+        }
     }
 }
 
@@ -611,6 +681,30 @@ mod tests {
         assert!(config.fixed_monitor_id.is_empty());
         assert_eq!(config.animation.enter_ms, 160);
         assert_eq!(config.animation.exit_ms, 400);
+    }
+
+    #[test]
+    fn japanese109_labels_use_keyboard_specific_names() {
+        let labels = OverlayKeyLabels::default();
+        assert_eq!(labels.keyboard_layout, KeyboardLayout::Japanese109);
+        assert_eq!(labels.display("Cancel"), "Break");
+        assert_eq!(labels.display("Equal"), "セミコロン");
+        assert_eq!(labels.display("Backquote"), "＠");
+        assert_eq!(labels.display("OemAuto"), "半角／全角");
+        assert_eq!(labels.display("Kanji"), "Alt+半角／全角");
+    }
+
+    #[test]
+    fn switching_to_us_layout_preserves_custom_labels_and_reverts_defaults() {
+        let mut labels = OverlayKeyLabels::default();
+        labels.keys.insert("Cancel".to_owned(), "中断".to_owned());
+        let labels = labels.with_layout(KeyboardLayout::Us104);
+        assert_eq!(labels.keyboard_layout, KeyboardLayout::Us104);
+        assert_eq!(labels.display("Cancel"), "中断");
+        assert_eq!(labels.display("Equal"), "Equal");
+        let labels = labels.with_layout(KeyboardLayout::Japanese109);
+        assert_eq!(labels.display("Cancel"), "中断");
+        assert_eq!(labels.display("Equal"), "セミコロン");
     }
 
     #[test]

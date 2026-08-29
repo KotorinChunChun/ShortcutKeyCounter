@@ -3,7 +3,7 @@ import type {
   DailyPoint, DashboardSummary, DataBounds, ExcludedApp, ExportResult, RankedApplication,
   RankedShortcut, SettingsSnapshot, ShortcutDetail, ShortcutRankingRow, KeyMapping,
   KeyMappingExportResult, RealtimeLogEntry, AppInfo, Theme, OverlaySettings, KeyPolicy,
-  OverlayMonitor, OverlayKeyLabels, DatabaseEnvironment, DatabaseEnvironmentSnapshot, SampleSourceStatus,
+  OverlayMonitor, OverlayKeyLabels, KeyboardLayout, DatabaseEnvironment, DatabaseEnvironmentSnapshot, SampleSourceStatus,
   SampleGenerationResult, DeleteBeforePreview, RankingsSnapshot, UsageGraphSnapshot, AnalyticsRangeKey
 } from './types.js'
 
@@ -63,6 +63,7 @@ export const api = {
   setOverlaySettings: (settings: OverlaySettings) => invoke<OverlaySettings>('set_overlay_settings', { settings }),
   overlayKeyLabels: () => invoke<OverlayKeyLabels>('get_overlay_key_labels'),
   setOverlayKeyLabels: (labels: OverlayKeyLabels) => invoke<OverlayKeyLabels>('set_overlay_key_labels', { labels }),
+  setOverlayKeyboardLayout: (layout: KeyboardLayout) => invoke<OverlayKeyLabels>('set_overlay_keyboard_layout', { layout }),
   overlayKeyPolicy: () => invoke<KeyPolicy>('get_overlay_key_policy'),
   setOverlayKeyPolicy: (policy: KeyPolicy) => invoke<KeyPolicy>('set_overlay_key_policy', { policy }),
   reloadOverlayAssets: () => invoke<void>('reload_overlay_assets'),

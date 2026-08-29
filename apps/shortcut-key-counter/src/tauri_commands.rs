@@ -23,7 +23,7 @@ use crate::key_policy::KeyPolicyConfig;
 use crate::maintenance::{
     downloads_or_fallback, BackupResult, ClearResult, DeleteBeforePreview, ExportResult,
 };
-use crate::overlay::config::OverlayKeyLabels;
+use crate::overlay::config::{KeyboardLayout, OverlayKeyLabels};
 use crate::realtime_log::RealtimeLogEntry;
 use crate::sample_data::{SampleGenerationResult, SampleSourceStatus};
 use crate::tray::{sync_capture_ui, sync_overlay_ui};
@@ -456,6 +456,19 @@ pub fn set_overlay_key_labels(
     state
         .replace_overlay_labels(labels)
         .map_err(|_| CommandError::new("KEY_LABELS_FAILED", "表示名を保存できませんでした。"))
+}
+
+#[tauri::command]
+pub fn set_overlay_keyboard_layout(
+    state: State<'_, AppState>,
+    layout: KeyboardLayout,
+) -> Result<OverlayKeyLabels, CommandError> {
+    state.replace_overlay_keyboard_layout(layout).map_err(|_| {
+        CommandError::new(
+            "KEY_LABELS_FAILED",
+            "キーボード種類を保存できませんでした。",
+        )
+    })
 }
 
 #[tauri::command]

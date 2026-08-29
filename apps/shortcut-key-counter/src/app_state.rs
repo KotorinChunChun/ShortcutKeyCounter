@@ -24,7 +24,7 @@ use crate::key_mapping_state::SharedKeyMapping;
 use crate::key_policy::{self, KeyAction, KeyPolicyConfig, KeyPolicyError, SharedKeyPolicy};
 use crate::key_search::KeySearchCapture;
 use crate::overlay::config::{
-    load_labels, load_theme, save_labels_atomic, save_theme_atomic, OverlayConfig,
+    load_labels, load_theme, save_labels_atomic, save_theme_atomic, KeyboardLayout, OverlayConfig,
     OverlayConfigError, OverlayKeyLabels,
 };
 use crate::overlay::OverlayHandle;
@@ -214,6 +214,13 @@ impl AppState {
         save_labels_atomic(self.overlay.labels_path(), &labels)?;
         self.overlay.reload_assets();
         Ok(labels)
+    }
+
+    pub fn replace_overlay_keyboard_layout(
+        &self,
+        layout: KeyboardLayout,
+    ) -> Result<OverlayKeyLabels, AppStateError> {
+        self.replace_overlay_labels(self.overlay_labels().with_layout(layout))
     }
 
     /// Overlayの表示設定、単独キー既定ポリシー、ON/OFFを一括保存する。

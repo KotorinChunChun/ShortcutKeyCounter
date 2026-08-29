@@ -38,7 +38,8 @@ export interface OverlaySettings {
   repeat_counter: RepeatCounterTheme
   default_single_key_action: KeyAction
 }
-export interface OverlayKeyLabels { version: number; keys: Record<string, string> }
+export type KeyboardLayout = 'japanese-109' | 'us-104'
+export interface OverlayKeyLabels { version: number; keyboard_layout: KeyboardLayout; keys: Record<string, string> }
 export interface KeyPolicy {
   version: number
   default_single_key: KeyAction

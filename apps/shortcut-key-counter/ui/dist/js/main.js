@@ -820,6 +820,7 @@ function renderKeyMapping(mapping, policy, labels) {
     currentKeyMapping = structuredClone(mapping);
     currentKeyPolicy = structuredClone(policy);
     currentOverlayLabels = structuredClone(labels);
+    el('keyboardLayout').value = labels.keyboard_layout;
     const head = el('keyPolicyMatrixHead');
     const body = el('keyPolicyMatrixBody');
     head.innerHTML = `<tr><th class="key-code-col">キーコード</th><th class="key-name-col">テキス名</th><th class="key-label-col">オーバーレイ表示名</th><th class="key-category-col">分類</th>${modifierPatterns.map(pattern => `<th class="key-policy-pattern ${selectedModifierColumns.has(pattern.id) ? 'selected-column' : ''}" data-pattern="${pattern.id}" title="クリックで一括変更対象列を選択">${escapeHtml(pattern.label)}</th>`).join('')}</tr>`;
@@ -854,7 +855,7 @@ function policyFromUi() {
     return policy;
 }
 function labelsFromUi() {
-    const labels = structuredClone(currentOverlayLabels ?? { version: 2, keys: {} });
+    const labels = structuredClone(currentOverlayLabels ?? { version: 2, keyboard_layout: 'japanese-109', keys: {} });
     document.querySelectorAll('#keyPolicyMatrixBody input[data-key-label]').forEach(input => {
         const key = input.dataset.keyLabel;
         if (!key)
@@ -1628,6 +1629,25 @@ function bindEvents() {
         applyMappingFilters();
     });
     el('mappingKeySearch').addEventListener('click', () => void searchMappingPhysicalKey());
+    el('keyboardLayout').addEventListener('change', event => {
+        const select = event.currentTarget;
+        const layout = select.value;
+        const previous = currentOverlayLabels?.keyboard_layout ?? 'japanese-109';
+        void (async () => {
+            try {
+                // Keep label edits made in the table before applying the new default table.
+                await api.setOverlayKeyLabels(labelsFromUi());
+                const labels = await api.setOverlayKeyboardLayout(layout);
+                if (currentKeyMapping && currentKeyPolicy)
+                    renderKeyMapping(currentKeyMapping, currentKeyPolicy, labels);
+                showToast(`${layout === 'japanese-109' ? '日本語109キー' : '英語104キー'}の表示名既定値を適用しました。`);
+            }
+            catch (error) {
+                select.value = previous;
+                showToast(errorMessage(error));
+            }
+        })();
+    });
     el('mappingEnableAll').addEventListener('click', () => bulkMappingChange('record_and_display_break'));
     el('mappingContinueDisplay').addEventListener('click', () => bulkMappingChange('continue_display'));
     el('mappingRecordDisplay').addEventListener('click', () => bulkMappingChange('record_and_display_break'));

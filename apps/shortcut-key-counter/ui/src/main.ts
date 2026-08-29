@@ -3,7 +3,7 @@ import type {
   ApplicationStats, CaptureHealth, CaptureStatus, DailyPoint, DateRange, ExcludedApp,
   RangeKey, SettingsSnapshot, ShortcutRankingRow, KeyMapping, RealtimeLogEntry, AppInfo, Theme,
   OverlaySettings, OverlayPosition, OverlayPositionMode, OverlayDisplayMode, OverlayMonitorMode,
-  OverlayMonitor, KeyAction, KeyPolicy, OverlayKeyLabels, DatabaseEnvironmentSnapshot, DatabaseEnvironment,
+  OverlayMonitor, KeyAction, KeyPolicy, OverlayKeyLabels, KeyboardLayout, DatabaseEnvironmentSnapshot, DatabaseEnvironment,
   AnalyticsRangeKey, RankingsSnapshot, KeyRankingItem, ApplicationRankingItem, UsageGraphSnapshot
 } from './types.js'
 
@@ -766,6 +766,7 @@ function keyActionOptionsHtml(selected: KeyAction, allowRecord: boolean): string
 }
 function renderKeyMapping(mapping: KeyMapping, policy: KeyPolicy, labels: OverlayKeyLabels): void {
   currentKeyMapping = structuredClone(mapping); currentKeyPolicy = structuredClone(policy); currentOverlayLabels = structuredClone(labels)
+  el<HTMLSelectElement>('keyboardLayout').value = labels.keyboard_layout
   const head = el<HTMLTableSectionElement>('keyPolicyMatrixHead'); const body = el<HTMLTableSectionElement>('keyPolicyMatrixBody')
   head.innerHTML = `<tr><th class="key-code-col">キーコード</th><th class="key-name-col">テキス名</th><th class="key-label-col">オーバーレイ表示名</th><th class="key-category-col">分類</th>${modifierPatterns.map(pattern => `<th class="key-policy-pattern ${selectedModifierColumns.has(pattern.id) ? 'selected-column' : ''}" data-pattern="${pattern.id}" title="クリックで一括変更対象列を選択">${escapeHtml(pattern.label)}</th>`).join('')}</tr>`
   const rows = policyRows(mapping)
@@ -789,7 +790,7 @@ function policyFromUi(): KeyPolicy {
   return policy
 }
 function labelsFromUi(): OverlayKeyLabels {
-  const labels = structuredClone(currentOverlayLabels ?? { version: 2, keys: {} })
+  const labels = structuredClone(currentOverlayLabels ?? { version: 2, keyboard_layout: 'japanese-109' as KeyboardLayout, keys: {} })
   document.querySelectorAll<HTMLInputElement>('#keyPolicyMatrixBody input[data-key-label]').forEach(input => {
     const key = input.dataset.keyLabel; if (!key) return; labels.keys[key] = input.value.trim() || key
   })
@@ -1331,6 +1332,23 @@ function bindEvents(): void {
     button.classList.toggle('active', activeMappingCategories.has(category)); applyMappingFilters()
   })
   el<HTMLButtonElement>('mappingKeySearch').addEventListener('click', () => void searchMappingPhysicalKey())
+  el<HTMLSelectElement>('keyboardLayout').addEventListener('change', event => {
+    const select = event.currentTarget as HTMLSelectElement
+    const layout = select.value as KeyboardLayout
+    const previous = currentOverlayLabels?.keyboard_layout ?? 'japanese-109'
+    void (async () => {
+      try {
+        // Keep label edits made in the table before applying the new default table.
+        await api.setOverlayKeyLabels(labelsFromUi())
+        const labels = await api.setOverlayKeyboardLayout(layout)
+        if (currentKeyMapping && currentKeyPolicy) renderKeyMapping(currentKeyMapping, currentKeyPolicy, labels)
+        showToast(`${layout === 'japanese-109' ? '日本語109キー' : '英語104キー'}の表示名既定値を適用しました。`)
+      } catch (error) {
+        select.value = previous
+        showToast(errorMessage(error))
+      }
+    })()
+  })
   el<HTMLButtonElement>('mappingEnableAll').addEventListener('click', () => bulkMappingChange('record_and_display_break'))
   el<HTMLButtonElement>('mappingContinueDisplay').addEventListener('click', () => bulkMappingChange('continue_display'))
   el<HTMLButtonElement>('mappingRecordDisplay').addEventListener('click', () => bulkMappingChange('record_and_display_break'))

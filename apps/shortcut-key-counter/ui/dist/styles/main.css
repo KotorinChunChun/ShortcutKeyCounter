@@ -460,6 +460,8 @@
 .mapping-control-box > strong { display:block; font-size:12px; margin-bottom:8px; }
 .mapping-selection-message { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; }
 .mapping-selection-message.error { color:var(--bad); font-weight:700; }
+.mapping-layout-control { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:11px; white-space:nowrap; }
+.mapping-layout-control .select { min-width:145px; padding:7px 8px; color:var(--text); }
 .key-policy-matrix-wrap { max-height:clamp(280px,48vh,520px); min-height:280px; }
 .mapping-search-hit td { outline:3px solid var(--warn); outline-offset:-3px; }
 
