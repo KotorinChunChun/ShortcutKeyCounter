@@ -2,7 +2,10 @@
 
 ## 手順
 
+- [ユーザーガイド](./users-guide.md)
 - [Windowsビルド・受入手順](./windows-build-and-acceptance.md)
+
+ユーザーガイド用の画像は [`images/users-guide/`](./images/users-guide/) に保存する。現在の撮影状況と撮影時の注意事項は、同フォルダーのREADMEを参照する。
 
 ## 基本情報
 

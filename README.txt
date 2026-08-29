@@ -3,6 +3,18 @@ ShortcutKeyCounter v0.1.4
 
 Windows上のショートカット利用をローカル集計する Rust + Tauri 2 アプリです。
 
+Download:
+  https://github.com/KotorinChunChun/ShortcutKeyCounter/releases/latest
+
+User Guide:
+  https://github.com/KotorinChunChun/ShortcutKeyCounter/blob/main/docs/users-guide.md
+
+Start:
+  1. ZIPを展開します。
+  2. ShortcutKeyCounter.exeとShortcutKeyCapture.exeを同じフォルダーに置きます。
+  3. ShortcutKeyCounter.exeを実行します。
+  4. 画面を閉じても通知領域で計測を継続します。完全終了は通知領域メニューの「終了」を選びます。
+
 v0.1.4 highlights:
 - 修飾なし単独入力はkeyboard/mouse/wheelを問わず永続記録禁止。通常mouse clickだけOverlay表示可。
 - Security GateはOverlay/Realtime Log/DBより前でFail Closed。

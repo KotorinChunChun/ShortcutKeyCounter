@@ -2,6 +2,13 @@
 
 Windows上のショートカット利用をローカル集計する Rust + Tauri 2 デスクトップアプリです。通常文字列、URL、ウィンドウタイトル、ドキュメント名、クリップボード、実行ファイルのフルパスは保存しません。
 
+## ダウンロードと使い方
+
+- [最新版をGitHub Releasesからダウンロード](https://github.com/KotorinChunChun/ShortcutKeyCounter/releases/latest)
+- [ユーザーガイド](docs/users-guide.md)
+
+ZIPを展開し、`ShortcutKeyCounter.exe` を実行してください。`ShortcutKeyCapture.exe` は同じフォルダーに置いたまま使用します。実行ファイルはコード署名されていないため、Windowsの警告が表示される場合があります。
+
 ## v0.1.4 主な実装
 
 - Win32 Low-Level keyboard / mouse hook + Elevated helper。
@@ -33,7 +40,8 @@ Windows上のショートカット利用をローカル集計する Rust + Tauri
 - `apps/shortcut-key-capture`: 管理者権限アプリ向け入力取得helper
 - `scripts`: release / ZIP packaging
 - `docs`: Windows build / acceptance
-- `dev`: 仕様・検証資料
+- `dev`: 現行仕様・実装記録・共通テンプレート・旧版履歴
+- `release/Publish`: GitHub Releasesへ公開する配布成果物のローカル控え（Git追跡対象外）
 
 ## Windows build
 
@@ -47,6 +55,8 @@ ZIPだけ作る場合:
 ```powershell
 .\scripts\build-release.ps1 -SkipInstaller
 ```
+
+生成したZIPは `release/Publish/` に保存されます。
 
 個別確認:
 
