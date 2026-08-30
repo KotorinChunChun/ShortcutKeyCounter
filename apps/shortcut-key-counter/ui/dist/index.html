@@ -159,7 +159,7 @@
             <button class="btn" type="button" data-position="middle-left">左中央</button><button class="btn" type="button" data-position="center">中央</button><button class="btn" type="button" data-position="middle-right">右中央</button>
             <button class="btn" type="button" data-position="bottom-left">左下</button><button class="btn" type="button" data-position="bottom-center">下中央</button><button class="btn" type="button" data-position="bottom-right">右下</button>
           </div>
-          <div class="overlay-subhead">外観</div>
+          <div class="overlay-subhead overlay-subhead-action"><span>外観</span><button class="btn" id="resetOverlayAppearance" type="button">外観設定を初期値に戻す</button></div>
           <div class="overlay-controls"><div class="overlay-control-group"><label for="overlayBackgroundColor"><strong>背景色</strong><span>キーキャップの色とは独立</span></label><div class="color-inputs"><input class="input" id="overlayBackgroundColor" type="text" maxlength="7" placeholder="#202020"><input id="overlayBackgroundColorPicker" type="color" value="#202020" aria-label="背景色を選択"></div></div><div class="overlay-control-group"><label for="overlayBackgroundOpacity"><strong>透明度</strong><span id="overlayOpacityValue">80%</span></label><input id="overlayBackgroundOpacity" type="range" min="0" max="100" step="1"></div></div>
           <div class="overlay-subhead">連打圧縮の見た目</div>
           <div class="repeat-theme-layout">
@@ -203,6 +203,7 @@
 <div class="modal-backdrop" id="bulkMappingModal"><div class="modal bulk-mapping-modal" role="dialog" aria-modal="true" aria-labelledby="bulkMappingTitle"><h3 id="bulkMappingTitle">一括変更の確認</h3><p class="bulk-mapping-confirmation" id="bulkMappingConfirmation"></p><div class="modal-actions"><button class="btn" id="cancelBulkMapping" type="button">キャンセル</button><button class="btn primary" id="confirmBulkMapping" type="button">実行</button></div></div></div>
 <div class="modal-backdrop" id="deleteModal"><div class="modal"><h3>統計データをすべて削除しますか？</h3><p>詳細ショートカット履歴・日次集計・アプリ利用時間が選択中DBから削除されます。この操作は元に戻せません。設定と除外アプリ設定は保持されます。</p><div class="modal-actions"><button class="btn" id="cancelDelete">キャンセル</button><button class="btn danger" id="confirmDelete">削除する</button></div></div></div>
 <div class="modal-backdrop" id="elevatedModal"><div class="modal"><h3>管理者権限モードを有効にしますか？</h3><p>管理者権限で動作するアプリ上のショートカット取得のため、入力取得専用プロセス ShortcutKeyCapture.exe をUAC昇格して起動します。UIとDB処理は通常権限のままです。</p><div class="modal-actions"><button class="btn" id="cancelElevated">キャンセル</button><button class="btn primary" id="confirmElevated">有効にする</button></div></div></div>
+<div class="modal-backdrop" id="resetOverlayAppearanceModal"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="resetOverlayAppearanceTitle"><h3 id="resetOverlayAppearanceTitle">外観設定を初期値に戻しますか？</h3><p>外観設定を初期値に戻します。現在の外観設定は失われます。この操作は取り消せません。位置、表示先モニター、キーマッピング、データは変更されません。</p><div class="modal-actions"><button class="btn" id="cancelResetOverlayAppearance" type="button">キャンセル</button><button class="btn primary" id="confirmResetOverlayAppearance" type="button">初期値に戻す</button></div></div></div>
 <div class="toast" id="toast"><span id="toastText"></span><button class="btn toast-action" id="toastAction">フォルダーを開く</button></div>
 <script type="module" src="./js/main.js"></script>
 </body>

@@ -64,6 +64,7 @@ export const api = {
   overlayMonitors: () => invoke<OverlayMonitor[]>('get_overlay_monitors'),
   previewOverlayMonitor: (monitorId: string, number: number) => invoke<void>('preview_overlay_monitor', { monitorId, number }),
   setOverlaySettings: (settings: OverlaySettings) => invoke<OverlaySettings>('set_overlay_settings', { settings }),
+  resetOverlayAppearance: () => invoke<OverlaySettings>('reset_overlay_appearance'),
   overlayKeyLabels: () => invoke<OverlayKeyLabels>('get_overlay_key_labels'),
   setOverlayKeyLabels: (labels: OverlayKeyLabels) => invoke<OverlayKeyLabels>('set_overlay_key_labels', { labels }),
   setOverlayKeyboardLayout: (layout: KeyboardLayout) => invoke<OverlayKeyLabels>('set_overlay_keyboard_layout', { layout }),

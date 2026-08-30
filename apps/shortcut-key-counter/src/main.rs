@@ -147,6 +147,7 @@ fn main() {
             tauri_commands::get_overlay_monitors,
             tauri_commands::preview_overlay_monitor,
             tauri_commands::set_overlay_settings,
+            tauri_commands::reset_overlay_appearance,
             tauri_commands::get_overlay_key_labels,
             tauri_commands::set_overlay_key_labels,
             tauri_commands::set_overlay_keyboard_layout,

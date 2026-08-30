@@ -479,6 +479,29 @@ pub fn set_overlay_settings(
 }
 
 #[tauri::command]
+pub fn reset_overlay_appearance(
+    state: State<'_, AppState>,
+) -> Result<OverlaySettingsDto, CommandError> {
+    let config = state.reset_overlay_appearance().map_err(|_| {
+        CommandError::new(
+            "SETTINGS_FAILED",
+            "オーバーレイ外観設定を初期値へ戻せませんでした。",
+        )
+    })?;
+    let enabled = state
+        .overlay_enabled()
+        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))?;
+    let policy = state
+        .key_policy_snapshot()
+        .map_err(|_| CommandError::new("SETTINGS_FAILED", "キーポリシーを読み込めませんでした。"))?;
+    Ok(OverlaySettingsDto::from_parts(
+        &config,
+        enabled,
+        policy.default_single_key,
+    ))
+}
+
+#[tauri::command]
 pub fn get_overlay_key_labels(state: State<'_, AppState>) -> OverlayKeyLabels {
     state.overlay_labels()
 }

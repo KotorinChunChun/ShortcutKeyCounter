@@ -228,6 +228,12 @@ impl AppState {
         Ok(())
     }
 
+    /// 外観関連だけを既定値へ戻し、保存成功後にOverlay runtimeへ反映する。
+    pub fn reset_overlay_appearance(&self) -> Result<OverlayConfig, AppStateError> {
+        let config = self.overlay_config().reset_appearance_from_defaults();
+        Ok(self.overlay.save_settings(&config)?)
+    }
+
     pub fn replace_overlay_labels(
         &self,
         labels: OverlayKeyLabels,

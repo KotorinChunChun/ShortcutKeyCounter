@@ -1360,6 +1360,33 @@ function bindEvents(): void {
     try { await renderSettings(await api.setDetailEventRetentionDays(value)); showToast(`詳細ショートカット履歴の保持を ${value} 日に変更しました。`) } catch(error){showToast(errorMessage(error)); await renderSettings().catch(()=>undefined)}
   })
   el<HTMLButtonElement>('previewOverlaySample').addEventListener('click', async()=>{try{await api.previewOverlaySample()}catch(error){showToast(errorMessage(error))}})
+  const resetOverlayAppearanceModal = el<HTMLDivElement>('resetOverlayAppearanceModal')
+  el<HTMLButtonElement>('resetOverlayAppearance').addEventListener('click', () => {
+    resetOverlayAppearanceModal.classList.add('show')
+    el<HTMLButtonElement>('cancelResetOverlayAppearance').focus()
+  })
+  el<HTMLButtonElement>('cancelResetOverlayAppearance').addEventListener('click', () => resetOverlayAppearanceModal.classList.remove('show'))
+  el<HTMLButtonElement>('confirmResetOverlayAppearance').addEventListener('click', async () => {
+    const button = el<HTMLButtonElement>('confirmResetOverlayAppearance')
+    button.disabled = true
+    try {
+      const settings = await api.resetOverlayAppearance()
+      resetOverlayAppearanceModal.classList.remove('show')
+      renderOverlaySettings(settings)
+      await api.previewOverlaySample()
+      showToast('外観設定を初期値へ戻しました。')
+    } catch (error) {
+      showToast(errorMessage(error))
+    } finally {
+      button.disabled = false
+    }
+  })
+  resetOverlayAppearanceModal.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      el<HTMLButtonElement>('cancelResetOverlayAppearance').click()
+    }
+  })
   el('overlaySwitch').addEventListener('click', async () => {
     const target = !el('overlaySwitch').classList.contains('on')
     try {

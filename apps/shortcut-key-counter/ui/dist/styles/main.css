@@ -132,6 +132,7 @@
   .modal h3 { margin:0 0 8px; }
   .modal p { color:var(--muted); font-size:12px; line-height:1.6; }
   .modal-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+  .overlay-subhead-action { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .toast { position:fixed; right:22px; bottom:22px; background:#152235; border:1px solid #315078; color:#eaf2ff; padding:11px 14px; border-radius:9px; box-shadow:var(--shadow); opacity:0; transform:translateY(12px); pointer-events:none; transition:.22s; z-index:120; font-size:12px; }
   .toast.show { opacity:1; transform:translateY(0); }
   .empty-note { color:var(--muted); font-size:12px; padding:12px 0 0; }

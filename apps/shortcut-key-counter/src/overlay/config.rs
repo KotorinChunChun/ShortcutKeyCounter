@@ -245,6 +245,23 @@ impl Default for OverlayConfig {
 }
 
 impl OverlayConfig {
+    /// 現在の配置・表示先などを維持したまま、描画・外観関連だけを既定値へ戻す。
+    pub fn reset_appearance_from_defaults(mut self) -> Self {
+        let defaults = Self::default();
+        self.design_directory = defaults.design_directory;
+        self.key = defaults.key;
+        self.display_duration_ms = defaults.display_duration_ms;
+        self.margin_px = defaults.margin_px;
+        self.item_gap_px = defaults.item_gap_px;
+        self.max_rows = defaults.max_rows;
+        self.background = defaults.background;
+        self.animation = defaults.animation;
+        self.repeat_counter = defaults.repeat_counter;
+        self.cache_items = defaults.cache_items;
+        self.max_window_width = defaults.max_window_width;
+        self.sanitize()
+    }
+
     pub fn total_lifetime_ms(&self) -> u64 {
         self.animation
             .enter_ms
@@ -730,6 +747,41 @@ mod tests {
         assert_eq!(config.display_duration_ms, 10_000);
         assert_eq!(config.max_rows, 10);
         assert_eq!(config.background.opacity, 1.0);
+    }
+
+    #[test]
+    fn reset_appearance_preserves_position_and_operational_fields() {
+        let mut config = OverlayConfig::default();
+        config.enabled = false;
+        config.display_mode = OverlayDisplayMode::ActiveWindow;
+        config.monitor_mode = OverlayMonitorMode::Fixed;
+        config.fixed_monitor_id = "monitor-2".to_owned();
+        config.position_mode = OverlayPositionMode::Auto;
+        config.fixed_position = OverlayPosition::TopLeft;
+        config.allowed_positions = vec![OverlayPosition::TopLeft, OverlayPosition::BottomRight];
+        config.preferred_position = OverlayPosition::TopLeft;
+        config.design_directory = "custom/design".to_owned();
+        config.display_duration_ms = 5_000;
+        config.margin_px = 99;
+        config.max_rows = 9;
+        config.background.color = "#ABCDEF".to_owned();
+        config.animation.enter = OverlayInAnimation::Pop;
+
+        let reset = config.clone().reset_appearance_from_defaults();
+
+        assert!(!reset.enabled);
+        assert_eq!(reset.display_mode, config.display_mode);
+        assert_eq!(reset.monitor_mode, config.monitor_mode);
+        assert_eq!(reset.fixed_monitor_id, config.fixed_monitor_id);
+        assert_eq!(reset.position_mode, config.position_mode);
+        assert_eq!(reset.fixed_position, config.fixed_position);
+        assert_eq!(reset.allowed_positions, config.allowed_positions);
+        assert_eq!(reset.preferred_position, config.preferred_position);
+        assert_eq!(reset.design_directory, OverlayConfig::default().design_directory);
+        assert_eq!(reset.display_duration_ms, OverlayConfig::default().display_duration_ms);
+        assert_eq!(reset.max_rows, OverlayConfig::default().max_rows);
+        assert_eq!(reset.background.color, OverlayConfig::default().background.color);
+        assert_eq!(reset.animation.enter, OverlayConfig::default().animation.enter);
     }
 
     #[test]

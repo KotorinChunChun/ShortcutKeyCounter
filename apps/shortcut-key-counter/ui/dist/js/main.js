@@ -1594,6 +1594,34 @@ function bindEvents() {
     catch (error) {
         showToast(errorMessage(error));
     } });
+    const resetOverlayAppearanceModal = el('resetOverlayAppearanceModal');
+    el('resetOverlayAppearance').addEventListener('click', () => {
+        resetOverlayAppearanceModal.classList.add('show');
+        el('cancelResetOverlayAppearance').focus();
+    });
+    el('cancelResetOverlayAppearance').addEventListener('click', () => resetOverlayAppearanceModal.classList.remove('show'));
+    el('confirmResetOverlayAppearance').addEventListener('click', async () => {
+        const button = el('confirmResetOverlayAppearance');
+        button.disabled = true;
+        try {
+            const settings = await api.resetOverlayAppearance();
+            resetOverlayAppearanceModal.classList.remove('show');
+            renderOverlaySettings(settings);
+            showToast('外観設定を初期値へ戻しました。');
+        }
+        catch (error) {
+            showToast(errorMessage(error));
+        }
+        finally {
+            button.disabled = false;
+        }
+    });
+    resetOverlayAppearanceModal.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            el('cancelResetOverlayAppearance').click();
+        }
+    });
     el('overlaySwitch').addEventListener('click', async () => {
         const target = !el('overlaySwitch').classList.contains('on');
         try {
