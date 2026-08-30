@@ -19,7 +19,8 @@ use super::animation::{
 };
 use super::config::{
     initialize_overlay_files, load_labels, load_theme, save_theme_atomic, OverlayConfig,
-    OverlayConfigError, OverlayDisplayMode, OverlayMonitorMode, OverlayPaths, OverlayPositionMode,
+    OverlayConfigError, OverlayDisplayMode, OverlayKeyLabels, OverlayMonitorMode, OverlayPaths,
+    OverlayPositionMode,
 };
 use super::event::{OverlayCaptureSource, OverlayEvent, OverlayInputKind};
 use super::renderer::{OverlayRenderError, OverlayRenderer};
@@ -47,6 +48,7 @@ pub struct OverlayHandle {
     dropped: Arc<AtomicU64>,
     paths: Arc<OverlayPaths>,
     bounds: Arc<RwLock<Option<OverlayBounds>>>,
+    labels_override: Arc<RwLock<Option<OverlayKeyLabels>>>,
 }
 
 impl OverlayHandle {
@@ -78,6 +80,20 @@ impl OverlayHandle {
 
     pub fn reload_assets(&self) {
         match self.sender.try_send(OverlayCommand::ReloadAssets) {
+            Err(TrySendError::Full(command)) => {
+                let _ = self.sender.send(command);
+            }
+            Ok(()) | Err(TrySendError::Disconnected(_)) => {}
+        }
+    }
+
+    /// 編集中のキー表示名をディスクへ保存せずOverlay rendererへ反映する。
+    pub fn set_labels_override(&self, labels: Option<OverlayKeyLabels>) {
+        if let Ok(mut current) = self.labels_override.write() {
+            *current = labels.clone();
+        }
+        let command = OverlayCommand::SetLabelsOverride(labels);
+        match self.sender.try_send(command) {
             Err(TrySendError::Full(command)) => {
                 let _ = self.sender.send(command);
             }
@@ -193,6 +209,7 @@ impl OverlayRuntime {
             dropped: Arc::new(AtomicU64::new(0)),
             paths,
             bounds: Arc::new(RwLock::new(None)),
+            labels_override: Arc::new(RwLock::new(None)),
         };
         (
             Self {
@@ -212,10 +229,18 @@ impl OverlayRuntime {
         let thread_bounds = Arc::clone(&bounds);
         let thread_paths = Arc::clone(&paths);
         let thread_enabled = Arc::clone(&enabled_state);
+        let labels_override = Arc::new(RwLock::new(None));
+        let thread_labels_override = Arc::clone(&labels_override);
         let join_handle = thread::Builder::new()
             .name("shortcut-overlay".to_owned())
             .spawn(move || {
-                run_overlay_thread(receiver, thread_paths, thread_enabled, thread_bounds)
+                run_overlay_thread(
+                    receiver,
+                    thread_paths,
+                    thread_enabled,
+                    thread_bounds,
+                    thread_labels_override,
+                )
             })
             .map_err(OverlayError::ThreadStart)?;
 
@@ -225,6 +250,7 @@ impl OverlayRuntime {
             dropped,
             paths,
             bounds,
+            labels_override,
         };
         Ok((
             Self {
@@ -264,6 +290,7 @@ enum OverlayCommand {
         config: OverlayConfig,
         generation: u64,
     },
+    SetLabelsOverride(Option<OverlayKeyLabels>),
     PreviewMonitor {
         monitor_id: String,
         label: String,
@@ -349,15 +376,27 @@ fn preview_sample_item(id: u64, now: Instant) -> OverlayItem {
     }
 }
 
+fn current_labels(
+    paths: &OverlayPaths,
+    labels_override: &RwLock<Option<OverlayKeyLabels>>,
+) -> OverlayKeyLabels {
+    labels_override
+        .read()
+        .ok()
+        .and_then(|value| value.clone())
+        .unwrap_or_else(|| load_labels(&paths.labels_json))
+}
+
 fn restore_preview_config(
     renderer: &mut OverlayRenderer,
     paths: &OverlayPaths,
+    labels_override: &RwLock<Option<OverlayKeyLabels>>,
     preview_base_config: &mut Option<OverlayConfig>,
 ) {
     let Some(config) = preview_base_config.clone() else {
         return;
     };
-    let labels = load_labels(&paths.labels_json);
+    let labels = current_labels(paths, labels_override);
     if renderer.replace_assets(paths, config, labels).is_ok() {
         *preview_base_config = None;
     }
@@ -376,9 +415,10 @@ fn run_overlay_thread(
     paths: Arc<OverlayPaths>,
     enabled_state: Arc<AtomicBool>,
     bounds: Arc<RwLock<Option<OverlayBounds>>>,
+    labels_override: Arc<RwLock<Option<OverlayKeyLabels>>>,
 ) {
     let config = load_theme(&paths.theme_json);
-    let labels = load_labels(&paths.labels_json);
+    let labels = current_labels(&paths, &labels_override);
     let Ok(mut renderer) = OverlayRenderer::load(&paths, config, labels) else {
         enabled_state.store(false, Ordering::Release);
         return;
@@ -416,7 +456,12 @@ fn run_overlay_thread(
         let now = Instant::now();
         remove_expired(&mut items, now, renderer.config());
         if preview_base_config.is_some() && !items.iter().any(|item| item.preview_only) {
-            restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+            restore_preview_config(
+                &mut renderer,
+                &paths,
+                &labels_override,
+                &mut preview_base_config,
+            );
         }
         if items.is_empty() {
             if let Ok(mut value) = bounds.write() {
@@ -470,7 +515,12 @@ fn run_overlay_thread(
                     continue;
                 }
                 if preview_base_config.is_some() {
-                    restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                    restore_preview_config(
+                        &mut renderer,
+                        &paths,
+                        &labels_override,
+                        &mut preview_base_config,
+                    );
                     items.clear();
                 }
                 recent_sources.push_back(RecentSourceEvent {
@@ -487,7 +537,12 @@ fn run_overlay_thread(
                 enabled = value;
                 enabled_state.store(value, Ordering::Release);
                 if !value {
-                    restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                    restore_preview_config(
+                        &mut renderer,
+                        &paths,
+                        &labels_override,
+                        &mut preview_base_config,
+                    );
                     items.clear();
                     recent_sources.clear();
                     if let Ok(mut value) = bounds.write() {
@@ -497,7 +552,12 @@ fn run_overlay_thread(
                 }
             }
             OverlayCommand::ResetSession => {
-                restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                restore_preview_config(
+                    &mut renderer,
+                    &paths,
+                    &labels_override,
+                    &mut preview_base_config,
+                );
                 items.clear();
                 recent_sources.clear();
                 if let Ok(mut value) = bounds.write() {
@@ -506,9 +566,14 @@ fn run_overlay_thread(
                 window.hide();
             }
             OverlayCommand::ReloadAssets => {
-                restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                restore_preview_config(
+                    &mut renderer,
+                    &paths,
+                    &labels_override,
+                    &mut preview_base_config,
+                );
                 let config = load_theme(&paths.theme_json);
-                let labels = load_labels(&paths.labels_json);
+                let labels = current_labels(&paths, &labels_override);
                 if renderer.replace_assets(&paths, config, labels).is_ok() {
                     items.retain(|item| !item.preview_only);
                     enforce_max_rows(&mut items, renderer.config().max_rows);
@@ -517,8 +582,25 @@ fn run_overlay_thread(
                     }
                 }
             }
+            OverlayCommand::SetLabelsOverride(labels) => {
+                restore_preview_config(
+                    &mut renderer,
+                    &paths,
+                    &labels_override,
+                    &mut preview_base_config,
+                );
+                let config = load_theme(&paths.theme_json);
+                let labels = labels.unwrap_or_else(|| load_labels(&paths.labels_json));
+                let _ = renderer.replace_assets(&paths, config, labels);
+                items.retain(|item| !item.preview_only);
+            }
             OverlayCommand::PreviewSample => {
-                restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                restore_preview_config(
+                    &mut renderer,
+                    &paths,
+                    &labels_override,
+                    &mut preview_base_config,
+                );
                 items.clear();
                 let now = Instant::now();
                 items.push_back(preview_sample_item(next_id, now));
@@ -531,12 +613,17 @@ fn run_overlay_thread(
                 if preview_base_config.is_none() {
                     preview_base_config = Some(renderer.config().clone());
                 }
-                let labels = load_labels(&paths.labels_json);
+                let labels = current_labels(&paths, &labels_override);
                 if renderer
                     .replace_assets(&paths, config.sanitize(), labels)
                     .is_err()
                 {
-                    restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                    restore_preview_config(
+                        &mut renderer,
+                        &paths,
+                        &labels_override,
+                        &mut preview_base_config,
+                    );
                     items.clear();
                     if let Ok(mut value) = bounds.write() {
                         *value = None;
@@ -550,7 +637,12 @@ fn run_overlay_thread(
                 next_id = next_id.wrapping_add(1);
             }
             OverlayCommand::PreviewMonitor { monitor_id, label } => {
-                restore_preview_config(&mut renderer, &paths, &mut preview_base_config);
+                restore_preview_config(
+                    &mut renderer,
+                    &paths,
+                    &labels_override,
+                    &mut preview_base_config,
+                );
                 items.clear();
                 let now = Instant::now();
                 items.push_back(OverlayItem {
@@ -588,7 +680,7 @@ fn run_overlay_thread(
                         }
                     }
                     if save_theme_atomic(&paths.theme_json, &config).is_ok() {
-                        let labels = load_labels(&paths.labels_json);
+                        let labels = current_labels(&paths, &labels_override);
                         let _ = renderer.replace_assets(&paths, config, labels);
                     }
                 }

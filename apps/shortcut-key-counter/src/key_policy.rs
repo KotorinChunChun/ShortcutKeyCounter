@@ -54,7 +54,7 @@ impl From<KeyAction> for KeyDecision {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct KeyPolicyConfig {
     pub version: u32,
     pub default_single_key: KeyAction,

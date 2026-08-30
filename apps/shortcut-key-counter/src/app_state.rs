@@ -20,9 +20,13 @@ use crate::database_environment::{
     DatabaseEnvironment, DatabaseEnvironmentSnapshot, SharedDatabaseEnvironment,
 };
 use crate::elevated_capture::{ElevatedCaptureError, ElevatedCaptureManager};
-use crate::key_mapping_state::SharedKeyMapping;
+use crate::key_mapping_state::{KeyMappingError, SharedKeyMapping};
 use crate::key_policy::{self, KeyAction, KeyPolicyConfig, KeyPolicyError, SharedKeyPolicy};
 use crate::key_search::KeySearchCapture;
+use crate::mapping_edit_session::{
+    save_all_atomic, MappingEditError, MappingEditSession, MappingEditSessionSnapshot,
+    MappingEditValues, MappingEditValuesDto,
+};
 use crate::overlay::config::{
     load_labels, load_theme, save_labels_atomic, save_theme_atomic, KeyboardLayout, OverlayConfig,
     OverlayConfigError, OverlayKeyLabels,
@@ -54,6 +58,10 @@ pub enum AppStateError {
     OverlayConfig(#[from] OverlayConfigError),
     #[error("キーポリシーを処理できません: {0}")]
     KeyPolicy(#[from] KeyPolicyError),
+    #[error("キーマッピングを処理できません: {0}")]
+    KeyMapping(#[from] KeyMappingError),
+    #[error("キーマッピング編集セッションを処理できません: {0}")]
+    MappingEdit(#[from] MappingEditError),
     #[error("Security Gateが保護中です")]
     SecurityGateBlocked,
 }
@@ -71,6 +79,7 @@ pub struct AppState {
     pub shared_exclusions: SharedExcludedApps,
     pub key_mapping: SharedKeyMapping,
     pub key_policy: SharedKeyPolicy,
+    pub mapping_edit_session: Mutex<MappingEditSession>,
     pub key_search: KeySearchCapture,
     pub realtime_log: RealtimeLog,
     pub security_status: SharedSecurityStatus,
@@ -109,6 +118,7 @@ impl AppState {
             shared_exclusions,
             key_mapping,
             key_policy,
+            mapping_edit_session: Mutex::new(MappingEditSession::default()),
             key_search,
             realtime_log,
             security_status,
@@ -320,6 +330,110 @@ impl AppState {
                 *shared = policy;
             }
         }
+    }
+
+    fn apply_mapping_runtime(&self, values: &MappingEditValues) -> Result<(), AppStateError> {
+        *self
+            .key_mapping
+            .write()
+            .map_err(|_| AppStateError::KeyMapping(KeyMappingError::Poisoned))? =
+            values.mapping.clone();
+        *self
+            .key_policy
+            .write()
+            .map_err(|_| AppStateError::KeyPolicy(KeyPolicyError::Poisoned))? =
+            values.policy.clone();
+        self.overlay
+            .set_labels_override(Some(values.labels.clone()));
+        Ok(())
+    }
+
+    pub fn begin_mapping_edit(&self) -> Result<MappingEditSessionSnapshot, AppStateError> {
+        let values = MappingEditValues {
+            mapping: crate::key_mapping_state::snapshot(&self.key_mapping)?,
+            policy: key_policy::snapshot(&self.key_policy)?,
+            labels: self.overlay_labels(),
+        };
+        let mut session = self
+            .mapping_edit_session
+            .lock()
+            .map_err(|_| AppStateError::Poisoned)?;
+        Ok(session.begin(values)?)
+    }
+
+    pub fn mapping_edit_snapshot(&self) -> Result<MappingEditSessionSnapshot, AppStateError> {
+        Ok(self
+            .mapping_edit_session
+            .lock()
+            .map_err(|_| AppStateError::Poisoned)?
+            .snapshot())
+    }
+
+    pub fn apply_mapping_edit_draft(
+        &self,
+        values: MappingEditValuesDto,
+    ) -> Result<MappingEditSessionSnapshot, AppStateError> {
+        let mut session = self
+            .mapping_edit_session
+            .lock()
+            .map_err(|_| AppStateError::Poisoned)?;
+        let values = session.apply_draft(values.into())?;
+        self.apply_mapping_runtime(&values)?;
+        Ok(session.snapshot())
+    }
+
+    pub fn save_mapping_edit(&self) -> Result<MappingEditSessionSnapshot, AppStateError> {
+        let mut session = self
+            .mapping_edit_session
+            .lock()
+            .map_err(|_| AppStateError::Poisoned)?;
+        session.begin_busy()?;
+        let values = session.draft()?;
+        let result = save_all_atomic(
+            &crate::key_mapping_state::mapping_path(&self.paths.app_dir),
+            &crate::overlay::config::OverlayPaths {
+                theme_json: self.overlay.theme_path().to_path_buf(),
+                labels_json: self.overlay.labels_path().to_path_buf(),
+                policy_json: self.overlay.policy_path().to_path_buf(),
+                design_directory: self.overlay.design_directory().to_path_buf(),
+            },
+            &values,
+        );
+        if let Err(error) = result {
+            session.end_busy();
+            return Err(error.into());
+        }
+        session.mark_saved()?;
+        session.end_busy();
+        self.overlay.set_labels_override(None);
+        Ok(session.snapshot())
+    }
+
+    pub fn cancel_mapping_edit(&self) -> Result<MappingEditSessionSnapshot, AppStateError> {
+        let mut session = self
+            .mapping_edit_session
+            .lock()
+            .map_err(|_| AppStateError::Poisoned)?;
+        session.begin_busy()?;
+        let values = session.saved()?;
+        if let Err(error) = self.apply_mapping_runtime(&values) {
+            session.end_busy();
+            return Err(error);
+        }
+        session.restore_saved()?;
+        session.end_busy();
+        self.overlay.set_labels_override(None);
+        Ok(session.snapshot())
+    }
+
+    pub fn end_mapping_edit(&self) -> Result<MappingEditSessionSnapshot, AppStateError> {
+        let mut session = self
+            .mapping_edit_session
+            .lock()
+            .map_err(|_| AppStateError::Poisoned)?;
+        session.finish()?;
+        self.overlay.set_labels_override(None);
+        Ok(session.snapshot())
     }
 
     pub fn capture_health(&self) -> CaptureHealthSnapshot {

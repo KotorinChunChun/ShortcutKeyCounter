@@ -20,6 +20,7 @@ use crate::command_error::CommandError;
 use crate::database_environment::{DatabaseEnvironment, DatabaseEnvironmentSnapshot};
 use crate::key_mapping_state::{self, KeyMappingExportResult};
 use crate::key_policy::KeyPolicyConfig;
+use crate::mapping_edit_session::{MappingEditSessionSnapshot, MappingEditValuesDto};
 use crate::maintenance::{
     downloads_or_fallback, BackupResult, ClearResult, DeleteBeforePreview, ExportResult,
 };
@@ -937,6 +938,72 @@ pub fn set_key_mapping(
             "キーマッピングを保存できませんでした。",
         )
     })
+}
+
+#[tauri::command]
+pub fn begin_mapping_edit_session(
+    state: State<'_, AppState>,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state.begin_mapping_edit().map_err(mapping_edit_error)
+}
+
+#[tauri::command]
+pub fn get_mapping_edit_session(
+    state: State<'_, AppState>,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state.mapping_edit_snapshot().map_err(mapping_edit_error)
+}
+
+#[tauri::command]
+pub fn apply_mapping_edit_draft(
+    state: State<'_, AppState>,
+    draft: MappingEditValuesDto,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state
+        .apply_mapping_edit_draft(draft)
+        .map_err(mapping_edit_error)
+}
+
+#[tauri::command]
+pub fn save_mapping_edit_session(
+    state: State<'_, AppState>,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state.save_mapping_edit().map_err(mapping_edit_error)
+}
+
+#[tauri::command]
+pub fn cancel_mapping_edit_session(
+    state: State<'_, AppState>,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state.cancel_mapping_edit().map_err(mapping_edit_error)
+}
+
+#[tauri::command]
+pub fn end_mapping_edit_session(
+    state: State<'_, AppState>,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state.end_mapping_edit().map_err(mapping_edit_error)
+}
+
+#[tauri::command]
+pub fn mapping_edit_session_status(
+    state: State<'_, AppState>,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state.mapping_edit_snapshot().map_err(mapping_edit_error)
+}
+
+fn mapping_edit_error(error: crate::app_state::AppStateError) -> CommandError {
+    let message = error.to_string();
+    let code = if message.contains("未保存") {
+        "MAPPING_EDIT_DIRTY"
+    } else if message.contains("処理中") {
+        "MAPPING_EDIT_BUSY"
+    } else if message.contains("開始されていません") {
+        "MAPPING_EDIT_INACTIVE"
+    } else {
+        "MAPPING_EDIT_FAILED"
+    };
+    CommandError::new(code, message)
 }
 
 #[tauri::command]

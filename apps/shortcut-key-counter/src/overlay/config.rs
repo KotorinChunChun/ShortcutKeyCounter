@@ -322,7 +322,7 @@ impl OverlayConfig {
     }
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct OverlayKeyLabels {
     pub version: u32,
     #[serde(default)]
