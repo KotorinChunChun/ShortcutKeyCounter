@@ -5,6 +5,7 @@ use std::path::Path;
 use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
+use shortcut_core::eligibility::is_unmodified_recording_prohibited_identity;
 use thiserror::Error;
 
 use crate::overlay::event::OverlayInputKind;
@@ -91,7 +92,9 @@ impl KeyPolicyConfig {
         // single input into persistence. Runtime enforcement remains the final
         // authority, but sanitizing the stored policy also prevents misleading UI.
         self.overrides.retain(|identity, action| {
-            if !identity.contains('+') && matches!(action, KeyAction::RecordAndDisplayBreak) {
+            if is_unmodified_recording_prohibited_identity(identity)
+                && matches!(action, KeyAction::RecordAndDisplayBreak)
+            {
                 *action = KeyAction::ContinueDisplay;
             }
             true
@@ -231,5 +234,30 @@ mod tests {
         assert_eq!(config.default_single_key, KeyAction::ContinueDisplay);
         assert_eq!(config.default_shortcut, KeyAction::RecordAndDisplayBreak);
         assert_eq!(config.sanitize().version, 2);
+    }
+
+    #[test]
+    fn sanitize_blocks_only_unmodified_text_like_recording_overrides() {
+        let config = KeyPolicyConfig {
+            overrides: HashMap::from([
+                ("A".to_owned(), KeyAction::RecordAndDisplayBreak),
+                ("Num1".to_owned(), KeyAction::RecordAndDisplayBreak),
+                ("F5".to_owned(), KeyAction::RecordAndDisplayBreak),
+                ("MouseLeft".to_owned(), KeyAction::RecordAndDisplayBreak),
+                ("WheelLeft".to_owned(), KeyAction::RecordAndDisplayBreak),
+            ]),
+            ..KeyPolicyConfig::default()
+        }
+        .sanitize();
+
+        assert_eq!(config.overrides["A"], KeyAction::ContinueDisplay);
+        assert_eq!(config.overrides["Num1"], KeyAction::ContinueDisplay);
+        for identity in ["F5", "MouseLeft", "WheelLeft"] {
+            assert_eq!(
+                config.overrides[identity],
+                KeyAction::RecordAndDisplayBreak,
+                "{identity}"
+            );
+        }
     }
 }

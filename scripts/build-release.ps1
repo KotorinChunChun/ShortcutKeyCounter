@@ -170,11 +170,11 @@ $securityGate = Join-Path $Root 'apps\shortcut-key-counter\src\security_gate.rs'
 $dbEnvironment = Join-Path $Root 'apps\shortcut-key-counter\src\database_environment.rs'
 $sampleData = Join-Path $Root 'apps\shortcut-key-counter\src\sample_data.rs'
 if (-not (Select-String -Path $captureWorker -SimpleMatch 'RULE-SEC-001 / RULE-SEC-006' -Quiet) -or
-    -not (Select-String -Path $captureWorker -SimpleMatch 'if !has_any_modifier(&input.modifiers)' -Quiet) -or
+    -not (Select-String -Path $captureWorker -SimpleMatch 'is_unmodified_recording_prohibited(vk)' -Quiet) -or
     -not (Select-String -Path $captureWorker -SimpleMatch 'trace.outcome == ProcessOutcome::Recorded' -Quiet) -or
     -not (Select-String -Path $captureWorker -SimpleMatch 'SecurityGate::new' -Quiet) -or
     -not (Test-Path $securityGate)) {
-    throw 'v0.1.3 Security Gateまたは単独入力/Realtime Logのhard invariantが欠落しています。'
+    throw 'Security Gate、修飾なし英数記号入力、またはRealtime Logのhard invariantが欠落しています。'
 }
 if (-not (Select-String -Path $captureWorker -SimpleMatch 'MainInput::WheelLeft' -Quiet) -or
     -not (Select-String -Path $captureWorker -SimpleMatch 'MainInput::MouseX1' -Quiet) -or

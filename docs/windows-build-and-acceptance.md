@@ -125,7 +125,7 @@ This test distinguishes **destroying the WebView** from merely hiding the window
 3. Foreground Windowがあるモニターの作業領域中央下にキーが表示されること。
 4. Overlay表示によってForeground Window/keyboard focusがShortcutKeyCounterへ移らないこと。
 5. Overlay上をクリックしても下のアプリへクリックが届くこと。
-6. 修飾なし`A`等はOverlay表示可能だがDB/Realtime Logへ永続化されないこと。Modifier-onlyとwheel-onlyはOverlayにも表示されないこと。
+6. 修飾なし`A`等はOverlay表示可能だがDB/Realtime Logへ永続化されないこと。Modifier-onlyとwheel-onlyはOverlayに表示されないこと。wheel-onlyは明示的に記録設定した場合だけDB/Realtime Logへ永続化できること。
 7. 除外アプリ上では表示されないこと。
 
 ### Timing / animation
@@ -224,8 +224,8 @@ Rapid input:
 
 ## v0.1.3 mandatory security / data / overlay acceptance
 
-1. 修飾なしのkeyboard、MouseLeft/Right/Middle/X1/X2、WheelUp/Down/Left/Rightを入力してもSQLite/Realtime Log/診断へ残らない。
-2. `overlay_key_policy.json`を直接改ざんして修飾なし入力をrecord指定してもDBへ入らない。
+1. 修飾なしの英字、数字、OEM記号、テンキー数字／演算子を入力してもSQLite/Realtime Log/診断へ残らない。
+2. `overlay_key_policy.json`を直接改ざんして、記録禁止対象の修飾なし英数記号入力をrecord指定してもDBへ入らない。Fキー・システムキー・MouseLeft/Right/Middle/X1/X2・WheelUp/Down/Left/Rightは明示的にrecord指定し、Security Gate通過時にDB/Realtime Logへ入る。
 3. password属性付き入力欄へfocus中はOverlay/DB/Realtime Log/入力統計が増えない。通常Webページにpassword欄が存在するだけでは停止しない。
 4. ShortcutKeyCounterを通常権限で動かし、高Integrity Level foregroundへ切替すると入力処理が停止する。権限判定失敗時も記録しない。
 5. Realtime Logは実際にDBへ記録されたshortcutだけを表示する。

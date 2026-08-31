@@ -363,11 +363,10 @@ pub fn get_hourly_trend(
             }
         }
     }
-    let first_date: Option<String> = connection.query_row(
-        "SELECT MIN(date) FROM shortcut_hourly_summary",
-        [],
-        |row| row.get(0),
-    )?;
+    let first_date: Option<String> =
+        connection.query_row("SELECT MIN(date) FROM shortcut_hourly_summary", [], |row| {
+            row.get(0)
+        })?;
     Ok(HourlyTrend {
         points: counts
             .into_iter()
@@ -641,9 +640,15 @@ mod tests {
 
         assert_eq!(trend.first_date, Some("2026-08-15".to_owned()));
         assert_eq!(trend.points.len(), 24);
-        assert_eq!(trend.points.first(), Some(&HourlyPoint { hour: 0, count: 0 }));
+        assert_eq!(
+            trend.points.first(),
+            Some(&HourlyPoint { hour: 0, count: 0 })
+        );
         assert_eq!(trend.points[9], HourlyPoint { hour: 9, count: 9 });
-        assert_eq!(trend.points.last(), Some(&HourlyPoint { hour: 23, count: 0 }));
+        assert_eq!(
+            trend.points.last(),
+            Some(&HourlyPoint { hour: 23, count: 0 })
+        );
         assert_eq!(trend.points.iter().map(|point| point.count).sum::<i64>(), 9);
     }
 

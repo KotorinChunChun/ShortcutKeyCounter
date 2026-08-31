@@ -14,7 +14,10 @@ pub fn upsert_hourly(
          VALUES (?1, ?2, 1)
          ON CONFLICT(date, hour)
          DO UPDATE SET count = shortcut_hourly_summary.count + 1",
-        params![format_date(event.occurred_at), i64::from(event.occurred_at.hour())],
+        params![
+            format_date(event.occurred_at),
+            i64::from(event.occurred_at.hour())
+        ],
     )?;
     Ok(())
 }

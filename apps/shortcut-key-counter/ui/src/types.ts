@@ -38,8 +38,9 @@ export interface OverlaySettings {
   repeat_counter: RepeatCounterTheme
   default_single_key_action: KeyAction
 }
-export type KeyboardLayout = 'japanese-109' | 'us-104'
-export interface OverlayKeyLabels { version: number; keyboard_layout: KeyboardLayout; keys: Record<string, string> }
+export type KeyboardLayout = 'japanese-109' | 'us-104' | 'iso-105'
+export type KeyboardInputMode = 'romaji' | 'kana'
+export interface OverlayKeyLabels { version: number; keyboard_layout: KeyboardLayout; input_mode: KeyboardInputMode; keys: Record<string, string> }
 export interface KeyPolicy {
   version: number
   default_single_key: KeyAction
@@ -73,6 +74,15 @@ export interface MouseKeyMapping {
 }
 export interface KeyMapping { version: number; keyboard: KeyMappingEntry[]; mouse: MouseKeyMapping }
 export interface KeyMappingExportResult { path: string }
+export interface MappingEditValues { mapping: KeyMapping; policy: KeyPolicy; labels: OverlayKeyLabels }
+export interface MappingEditSessionSnapshot {
+  saved: MappingEditValues
+  draft: MappingEditValues
+  active: boolean
+  busy: boolean
+  dirty: boolean
+}
+export interface MappingProfile { name: string; built_in: boolean; values: MappingEditValues }
 export interface RealtimeLogEntry { sequence: number; occurred_at: string; shortcut: string; application: string; outcome: string }
 export interface AppInfo { name: string; version: string; author: string; github_url: string }
 

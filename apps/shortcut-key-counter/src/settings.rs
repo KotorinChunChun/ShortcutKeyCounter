@@ -3,10 +3,9 @@
 use std::path::Path;
 
 use shortcut_storage::repositories::settings_repository::{
-    get_setting, set_setting, AUTO_START_KEY, CAPTURE_ELEVATED_KEY,
-    DETAIL_EVENT_RETENTION_DAYS_KEY, DUPLICATE_GUARD_SECONDS_KEY, OVERLAY_ENABLED_KEY, THEME_KEY,
-    DAILY_EXPORT_APPLICATIONS_KEY, DAILY_EXPORT_NAME_KEY, USAGE_GRAPH_COLORS_KEY,
-    USAGE_TRACKING_ENABLED_KEY,
+    get_setting, set_setting, AUTO_START_KEY, CAPTURE_ELEVATED_KEY, DAILY_EXPORT_APPLICATIONS_KEY,
+    DAILY_EXPORT_NAME_KEY, DETAIL_EVENT_RETENTION_DAYS_KEY, DUPLICATE_GUARD_SECONDS_KEY,
+    OVERLAY_ENABLED_KEY, THEME_KEY, USAGE_GRAPH_COLORS_KEY, USAGE_TRACKING_ENABLED_KEY,
 };
 use shortcut_storage::StorageError;
 use shortcut_windows::autostart::{
@@ -183,7 +182,12 @@ pub fn set_daily_export_applications(
     applications: &[String],
 ) -> Result<(), SettingsError> {
     validate_daily_export_applications(applications)?;
-    let normalized = applications.iter().cloned().collect::<BTreeSet<_>>().into_iter().collect::<Vec<_>>();
+    let normalized = applications
+        .iter()
+        .cloned()
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
     let raw = serde_json::to_string(&normalized)
         .map_err(|_| SettingsError::InvalidDailyExportApplications)?;
     set_setting(connection, DAILY_EXPORT_APPLICATIONS_KEY, &raw)?;

@@ -357,7 +357,7 @@
 .key-policy-matrix .key-policy-key-head,.key-policy-matrix .key-policy-key { position:sticky; left:0; z-index:3; min-width:155px; width:155px; background:var(--panel); text-align:left; }
 .key-policy-matrix .key-policy-pattern { position:sticky; top:0; z-index:2; background:var(--panel); font-size:11px; }
 .key-policy-matrix .key-policy-key-head { z-index:4; }
-.key-policy-select { width:118px; min-width:118px; padding:5px 4px; font-size:10px; }
+.key-policy-select { width:118px; min-width:118px; padding:5px 4px; font-size:11px; }
 .notice.compact { padding:9px 11px; font-size:11px; }
 @media (max-width:650px) { .overlay-controls { grid-template-columns:1fr; } .overlay-control-group > .input,.overlay-control-group > .select { width:140px; } }
 
@@ -408,7 +408,7 @@
 .key-policy-matrix tr.mapping-hidden { display:none; }
 .key-policy-select { width:118px; min-width:118px; padding:5px 4px; font-size:10px; }
 .key-policy-select.security-locked { opacity:.72; border-style:dashed; }
-.key-label-input { width:142px; min-width:142px; padding:5px 6px; font-size:11px; }
+.key-label-input { width:142px; min-width:142px; padding:5px 6px; font-size:12px; }
 .key-code-text { font-family:Consolas,monospace; color:var(--muted); }
 .category-pill { display:inline-block; padding:3px 7px; border:1px solid var(--line); border-radius:999px; color:var(--muted); font-size:10px; }
 .overlay-monitor-row { grid-column:1 / -1; display:grid; grid-template-columns:minmax(190px,1fr) 220px auto minmax(210px,1fr); gap:10px; align-items:center; padding:9px 10px; border:1px solid var(--line); border-radius:9px; background:var(--panel-2); }
@@ -493,6 +493,7 @@
 .bulk-mapping-confirmation span { color:var(--muted); font-weight:400; }
 .mapping-layout-control { display:flex; align-items:center; gap:7px; color:var(--muted); font-size:11px; white-space:nowrap; }
 .mapping-layout-control .select { min-width:145px; padding:7px 8px; color:var(--text); }
+.mapping-dirty-status { color:var(--bad); font-size:12px; font-weight:700; white-space:nowrap; }
 .key-policy-matrix-wrap { max-height:clamp(280px,48vh,520px); min-height:280px; }
 .mapping-search-hit td { outline:3px solid var(--warn); outline-offset:-3px; }
 

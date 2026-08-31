@@ -54,11 +54,9 @@ mod tests {
             .query_row("SELECT count FROM shortcut_daily", [], |row| row.get(0))
             .expect("daily count");
         let hourly: i64 = connection
-            .query_row(
-                "SELECT count FROM shortcut_hourly_summary",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT count FROM shortcut_hourly_summary", [], |row| {
+                row.get(0)
+            })
             .expect("hourly count");
 
         assert_eq!(events, 2);

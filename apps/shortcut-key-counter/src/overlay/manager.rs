@@ -137,9 +137,10 @@ impl OverlayHandle {
     /// 保存前の外観draftをPreview専用経路へ渡す。generationはUI側の入力順を表し、
     /// Overlay threadは古いdraftを破棄する。
     pub fn preview_draft(&self, config: OverlayConfig, generation: u64) {
-        let _ = self
-            .sender
-            .try_send(OverlayCommand::PreviewDraft { config, generation });
+        let _ = self.sender.try_send(OverlayCommand::PreviewDraft {
+            config: Box::new(config),
+            generation,
+        });
     }
 
     /// 固定モニター選択直後の識別プレビュー。実入力経路・DB・Realtime Logは通さない。
@@ -287,7 +288,7 @@ enum OverlayCommand {
     ResetSession,
     PreviewSample,
     PreviewDraft {
-        config: OverlayConfig,
+        config: Box<OverlayConfig>,
         generation: u64,
     },
     SetLabelsOverride(Option<OverlayKeyLabels>),
@@ -615,7 +616,7 @@ fn run_overlay_thread(
                 }
                 let labels = current_labels(&paths, &labels_override);
                 if renderer
-                    .replace_assets(&paths, config.sanitize(), labels)
+                    .replace_assets(&paths, (*config).sanitize(), labels)
                     .is_err()
                 {
                     restore_preview_config(

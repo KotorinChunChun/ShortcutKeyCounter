@@ -1,12 +1,14 @@
 # ShortcutKeyCounter PROJECT_RULES
 
-更新日: 2026-08-18
+更新日: 2026-09-01
 
 ## 1. 最優先セキュリティ原則
 
-### RULE-SEC-001 修飾なし単独入力を永続化しない
+### RULE-SEC-001 修飾なし英数記号入力を永続化しない
 
-修飾キーなしの単独入力は、キーボード・マウス・垂直ホイール・水平ホイールを問わず、オーバーレイ表示のための一時的なメモリ処理以外では保持してはならない。
+修飾キーなしの英字、数字、記号、テンキー数字・演算子は、オーバーレイ表示のための一時的なメモリ処理以外では保持してはならない。
+
+ファンクションキー、システムキー、マウスクリック、垂直・水平ホイールは、KeyPolicyで明示的に記録対象とし、Security Gateを通過した場合に限り永続化できる。Ctrl、Alt、Shift、Win等の修飾キー単独はショートカットとして記録しない。
 
 禁止:
 - SQLite
@@ -26,7 +28,7 @@ UI設定やJSON設定で「記録」が指定されても、このルールを�
 
 Realtime Logへ流してよい入力は、最終的にDB記録対象として確定したショートカットイベントだけとする。
 
-DisplayOnly、Ignore、修飾なし単独入力、除外アプリ、セキュリティ保護中、計測停止中の入力はRealtime Logへ送らない。
+DisplayOnly、Ignore、記録禁止対象の修飾なし英数記号入力、除外アプリ、セキュリティ保護中、計測停止中の入力はRealtime Logへ送らない。
 
 ### RULE-SEC-003 パスワード・資格情報入力は完全抑止
 
@@ -84,7 +86,8 @@ callbackは軽量イベントをbounded queueへ渡すだけとする。
 
 各リリースで最低限確認する。
 
-- 単独キーボード入力が永続化されない
+- 修飾なしの英字・数字・記号・テンキー入力が永続化されない
+- 明示設定したFキー・システムキー・マウス・ホイールがSecurity Gate通過時だけ永続化される
 - password入力欄でOverlayが出ない
 - password入力欄でDBが増えない
 - password入力欄でRealtime Logが増えない
@@ -97,9 +100,9 @@ callbackは軽量イベントをbounded queueへ渡すだけとする。
 
 ### RULE-SEC-006 記録禁止は設定ファイルで解除できない
 
-修飾なし単独入力の記録禁止はhard-coded security invariantとして扱う。
+修飾なしの英字、数字、記号、テンキー数字・演算子の記録禁止はhard-coded security invariantとして扱う。
 
-- UIに記録設定を出さない。
+- 記録禁止対象についてはUIに記録設定を出さない。
 - JSONに記録指定を書いても無効。
 - DB上の設定値を改ざんしても無効。
 - migration時に旧設定が残っていても無効。
@@ -140,13 +143,11 @@ Overlay設定プレビュー用 `S A M P L E` はPreview専用イベントとし
 
 ## 10. 水平ホイール
 
-### RULE-SEC-010 WheelLeft / WheelRightも単独記録禁止対象
+### RULE-SEC-010 WheelLeft / WheelRightの単独記録
 
-`WheelLeft` / `WheelRight` を入力identityとして追加しても、修飾なしの場合は他の単独入力と同様に記録禁止とする。
+`WheelLeft` / `WheelRight` は修飾の有無を問わず、Security Gate通過後にKeyPolicyで記録可否を決定できる。修飾なしの場合も、利用者が明示的に記録を選択したときだけ永続化する。
 
-設定ファイルを改ざんしても記録禁止は解除できない。
-
-修飾付き `WheelLeft` / `WheelRight` は、Security Gate通過後にKeyPolicyで記録可否を決定できる。
+単独ホイールは `RULE-UI-011` に従ってOverlayへ表示しない。表示可否と記録可否を混同しない。
 
 
 ## 11. Modifier-only / Wheel-only Overlay表示
@@ -193,7 +194,7 @@ Overlay自身を移動するためのMouseLeftは、Overlayの入力キャップ
 
 ### RULE-DATA-014 サンプルでもSecurity Gateを迂回しない
 
-60日分のshortcut sampleおよび前日分Realtime Log sampleを生成する際も、修飾なし単独入力・Security Gate禁止入力を生成してはならない。
+60日分のshortcut sampleおよび前日分Realtime Log sampleを生成する際も、記録禁止対象の修飾なし英数記号入力・Security Gate禁止入力を生成してはならない。
 
 ### RULE-DATA-015 Realtime Log sampleで通常ログ仕様を弱めない
 

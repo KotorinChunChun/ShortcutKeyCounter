@@ -25,6 +25,21 @@ pub fn request_show_settings_window(app: &AppHandle<Wry>) {
     request_show_main_window_page(app, Some("settings"));
 }
 
+pub fn request_show_key_mapping_window(app: &AppHandle<Wry>) {
+    request_show_main_window_page(app, Some("key-mapping"));
+}
+
+pub fn notify_mapping_unsaved_blocked(app: &AppHandle<Wry>) {
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        let _ = app.emit_to(MAIN_WINDOW_LABEL, "mapping-unsaved-blocked", ());
+    } else {
+        request_show_key_mapping_window(app);
+    }
+}
+
 fn request_show_main_window_page(app: &AppHandle<Wry>, page: Option<&str>) {
     if let Some(page) = page {
         if let Ok(mut pending) = pending_page().lock() {

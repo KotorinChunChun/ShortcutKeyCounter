@@ -327,16 +327,41 @@ pub struct OverlayKeyLabels {
     pub version: u32,
     #[serde(default)]
     pub keyboard_layout: KeyboardLayout,
+    #[serde(default)]
+    pub input_mode: KeyboardInputMode,
     pub keys: BTreeMap<String, String>,
 }
 
-/// オーバーレイ表示名の既定値に使用するキーボード配列。
+/// キー表示名の既定値に使用するキーボード配列。
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum KeyboardLayout {
     #[default]
     Japanese109,
     Us104,
+    Iso105,
+}
+
+impl KeyboardLayout {
+    pub fn supports_kana(self) -> bool {
+        matches!(self, Self::Japanese109)
+    }
+}
+
+fn effective_input_mode(layout: KeyboardLayout, mode: KeyboardInputMode) -> KeyboardInputMode {
+    if layout.supports_kana() {
+        mode
+    } else {
+        KeyboardInputMode::Romaji
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum KeyboardInputMode {
+    #[default]
+    Romaji,
+    Kana,
 }
 
 impl Default for OverlayKeyLabels {
@@ -347,6 +372,11 @@ impl Default for OverlayKeyLabels {
 
 impl OverlayKeyLabels {
     pub fn for_layout(keyboard_layout: KeyboardLayout) -> Self {
+        Self::for_layout_mode(keyboard_layout, KeyboardInputMode::Romaji)
+    }
+
+    pub fn for_layout_mode(keyboard_layout: KeyboardLayout, input_mode: KeyboardInputMode) -> Self {
+        let input_mode = effective_input_mode(keyboard_layout, input_mode);
         let mut keys = BTreeMap::new();
         for (_, name) in key_catalog() {
             keys.insert(name.clone(), name);
@@ -364,18 +394,26 @@ impl OverlayKeyLabels {
         ] {
             keys.insert(name.to_owned(), name.to_owned());
         }
-        if keyboard_layout == KeyboardLayout::Japanese109 {
-            apply_japanese109_defaults(&mut keys);
+        match keyboard_layout {
+            KeyboardLayout::Japanese109 => {
+                apply_japanese109_defaults(&mut keys);
+                if input_mode == KeyboardInputMode::Kana {
+                    apply_japanese109_kana_defaults(&mut keys);
+                }
+            }
+            KeyboardLayout::Iso105 => apply_iso105_defaults(&mut keys),
+            KeyboardLayout::Us104 => {}
         }
         Self {
             version: 2,
             keyboard_layout,
+            input_mode,
             keys,
         }
     }
 
     pub fn merge_with_defaults(mut saved: Self) -> Self {
-        let mut current = Self::for_layout(saved.keyboard_layout);
+        let mut current = Self::for_layout_mode(saved.keyboard_layout, saved.input_mode);
         current.keys.append(&mut saved.keys);
         current.version = 2;
         current
@@ -384,11 +422,12 @@ impl OverlayKeyLabels {
     /// 配列変更時に、旧配列の既定値だけを新配列の既定値へ置換する。
     /// ユーザーが編集した表示名は保持する。
     pub fn with_layout(mut self, keyboard_layout: KeyboardLayout) -> Self {
-        if self.keyboard_layout == keyboard_layout {
+        let input_mode = effective_input_mode(keyboard_layout, self.input_mode);
+        if self.keyboard_layout == keyboard_layout && self.input_mode == input_mode {
             return Self::merge_with_defaults(self);
         }
-        let old_defaults = Self::for_layout(self.keyboard_layout).keys;
-        let new_defaults = Self::for_layout(keyboard_layout).keys;
+        let old_defaults = Self::for_layout_mode(self.keyboard_layout, self.input_mode).keys;
+        let new_defaults = Self::for_layout_mode(keyboard_layout, input_mode).keys;
         for (key, old_label) in old_defaults {
             if self.keys.get(&key) == Some(&old_label) {
                 if let Some(new_label) = new_defaults.get(&key) {
@@ -397,6 +436,25 @@ impl OverlayKeyLabels {
             }
         }
         self.keyboard_layout = keyboard_layout;
+        self.input_mode = input_mode;
+        Self::merge_with_defaults(self)
+    }
+
+    pub fn with_input_mode(mut self, input_mode: KeyboardInputMode) -> Self {
+        let input_mode = effective_input_mode(self.keyboard_layout, input_mode);
+        if self.input_mode == input_mode {
+            return Self::merge_with_defaults(self);
+        }
+        let old_defaults = Self::for_layout_mode(self.keyboard_layout, self.input_mode).keys;
+        let new_defaults = Self::for_layout_mode(self.keyboard_layout, input_mode).keys;
+        for (key, old_label) in old_defaults {
+            if self.keys.get(&key) == Some(&old_label) {
+                if let Some(new_label) = new_defaults.get(&key) {
+                    self.keys.insert(key, new_label.clone());
+                }
+            }
+        }
+        self.input_mode = input_mode;
         Self::merge_with_defaults(self)
     }
 
@@ -429,6 +487,74 @@ fn apply_japanese109_defaults(keys: &mut BTreeMap<String, String>) {
         ("OemCopy", "カタカナ／ひらがな"),
         ("OemAuto", "半角／全角"),
         ("OemBackTab", "Alt+カタカナ／ひらがな"),
+    ];
+    for (key, label) in overrides {
+        if keys.contains_key(key) {
+            keys.insert(key.to_owned(), label.to_owned());
+        }
+    }
+}
+
+fn apply_iso105_defaults(keys: &mut BTreeMap<String, String>) {
+    // ISO 105 adds VK_OEM_102 left of Z. Continental legends are typically `<>`;
+    // UK `\|` remains a user-editable overlay label.
+    let overrides = [("Oem102", "<>")];
+    for (key, label) in overrides {
+        if keys.contains_key(key) {
+            keys.insert(key.to_owned(), label.to_owned());
+        }
+    }
+}
+
+fn apply_japanese109_kana_defaults(keys: &mut BTreeMap<String, String>) {
+    let overrides = [
+        ("1", "ぬ"),
+        ("2", "ふ"),
+        ("3", "あ"),
+        ("4", "う"),
+        ("5", "え"),
+        ("6", "お"),
+        ("7", "や"),
+        ("8", "ゆ"),
+        ("9", "よ"),
+        ("0", "わ"),
+        ("Minus", "ほ"),
+        ("Equal", "へ"),
+        ("Q", "た"),
+        ("W", "て"),
+        ("E", "い"),
+        ("R", "す"),
+        ("T", "か"),
+        ("Y", "ん"),
+        ("U", "な"),
+        ("I", "に"),
+        ("O", "ら"),
+        ("P", "せ"),
+        ("LeftBracket", "゛"),
+        ("RightBracket", "゜"),
+        ("A", "ち"),
+        ("S", "と"),
+        ("D", "し"),
+        ("F", "は"),
+        ("G", "き"),
+        ("H", "く"),
+        ("J", "ま"),
+        ("K", "の"),
+        ("L", "り"),
+        ("Semicolon", "れ"),
+        ("Quote", "け"),
+        ("Z", "つ"),
+        ("X", "さ"),
+        ("C", "そ"),
+        ("V", "ひ"),
+        ("B", "こ"),
+        ("N", "み"),
+        ("M", "も"),
+        ("Comma", "ね"),
+        ("Period", "る"),
+        ("Slash", "め"),
+        ("Backslash", "ろ"),
+        ("Space", "空白"),
     ];
     for (key, label) in overrides {
         if keys.contains_key(key) {
@@ -750,20 +876,66 @@ mod tests {
     }
 
     #[test]
+    fn japanese109_kana_mode_uses_physical_jis_legends() {
+        let labels =
+            OverlayKeyLabels::for_layout_mode(KeyboardLayout::Japanese109, KeyboardInputMode::Kana);
+        assert_eq!(labels.input_mode, KeyboardInputMode::Kana);
+        assert_eq!(labels.display("Q"), "た");
+        assert_eq!(labels.display("1"), "ぬ");
+        assert_eq!(labels.display("Semicolon"), "れ");
+    }
+
+    #[test]
+    fn iso105_labels_use_iso_extra_key_name() {
+        let labels = OverlayKeyLabels::for_layout(KeyboardLayout::Iso105);
+        assert_eq!(labels.keyboard_layout, KeyboardLayout::Iso105);
+        assert_eq!(labels.input_mode, KeyboardInputMode::Romaji);
+        assert_eq!(labels.display("Oem102"), "<>");
+        assert_eq!(labels.display("Equal"), "Equal");
+        assert_eq!(labels.display("Backslash"), "Backslash");
+    }
+
+    #[test]
+    fn iso105_and_us104_normalize_kana_mode_to_romaji() {
+        let iso =
+            OverlayKeyLabels::for_layout_mode(KeyboardLayout::Iso105, KeyboardInputMode::Kana);
+        assert_eq!(iso.input_mode, KeyboardInputMode::Romaji);
+        assert_eq!(iso.display("Q"), "Q");
+        let us = OverlayKeyLabels::for_layout_mode(KeyboardLayout::Us104, KeyboardInputMode::Kana);
+        assert_eq!(us.input_mode, KeyboardInputMode::Romaji);
+        assert_eq!(us.display("Q"), "Q");
+    }
+
+    #[test]
+    fn switching_from_japanese_kana_to_iso_replaces_kana_defaults() {
+        let mut labels =
+            OverlayKeyLabels::for_layout_mode(KeyboardLayout::Japanese109, KeyboardInputMode::Kana);
+        labels.keys.insert("Q".to_owned(), "カスタム".to_owned());
+        let labels = labels.with_layout(KeyboardLayout::Iso105);
+        assert_eq!(labels.keyboard_layout, KeyboardLayout::Iso105);
+        assert_eq!(labels.input_mode, KeyboardInputMode::Romaji);
+        assert_eq!(labels.display("Q"), "カスタム");
+        assert_eq!(labels.display("1"), "1");
+        assert_eq!(labels.display("Oem102"), "<>");
+    }
+
+    #[test]
     fn reset_appearance_preserves_position_and_operational_fields() {
-        let mut config = OverlayConfig::default();
-        config.enabled = false;
-        config.display_mode = OverlayDisplayMode::ActiveWindow;
-        config.monitor_mode = OverlayMonitorMode::Fixed;
-        config.fixed_monitor_id = "monitor-2".to_owned();
-        config.position_mode = OverlayPositionMode::Auto;
-        config.fixed_position = OverlayPosition::TopLeft;
-        config.allowed_positions = vec![OverlayPosition::TopLeft, OverlayPosition::BottomRight];
-        config.preferred_position = OverlayPosition::TopLeft;
-        config.design_directory = "custom/design".to_owned();
-        config.display_duration_ms = 5_000;
-        config.margin_px = 99;
-        config.max_rows = 9;
+        let mut config = OverlayConfig {
+            enabled: false,
+            display_mode: OverlayDisplayMode::ActiveWindow,
+            monitor_mode: OverlayMonitorMode::Fixed,
+            fixed_monitor_id: "monitor-2".to_owned(),
+            position_mode: OverlayPositionMode::Auto,
+            fixed_position: OverlayPosition::TopLeft,
+            allowed_positions: vec![OverlayPosition::TopLeft, OverlayPosition::BottomRight],
+            preferred_position: OverlayPosition::TopLeft,
+            design_directory: "custom/design".to_owned(),
+            display_duration_ms: 5_000,
+            margin_px: 99,
+            max_rows: 9,
+            ..OverlayConfig::default()
+        };
         config.background.color = "#ABCDEF".to_owned();
         config.animation.enter = OverlayInAnimation::Pop;
 
@@ -777,11 +949,23 @@ mod tests {
         assert_eq!(reset.fixed_position, config.fixed_position);
         assert_eq!(reset.allowed_positions, config.allowed_positions);
         assert_eq!(reset.preferred_position, config.preferred_position);
-        assert_eq!(reset.design_directory, OverlayConfig::default().design_directory);
-        assert_eq!(reset.display_duration_ms, OverlayConfig::default().display_duration_ms);
+        assert_eq!(
+            reset.design_directory,
+            OverlayConfig::default().design_directory
+        );
+        assert_eq!(
+            reset.display_duration_ms,
+            OverlayConfig::default().display_duration_ms
+        );
         assert_eq!(reset.max_rows, OverlayConfig::default().max_rows);
-        assert_eq!(reset.background.color, OverlayConfig::default().background.color);
-        assert_eq!(reset.animation.enter, OverlayConfig::default().animation.enter);
+        assert_eq!(
+            reset.background.color,
+            OverlayConfig::default().background.color
+        );
+        assert_eq!(
+            reset.animation.enter,
+            OverlayConfig::default().animation.enter
+        );
     }
 
     #[test]

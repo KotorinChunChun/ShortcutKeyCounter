@@ -3,8 +3,9 @@ import type {
   ApplicationStats, CaptureHealth, CaptureStatus, DailyPoint, DateRange, ExcludedApp, HourlyTrend,
   RangeKey, SettingsSnapshot, ShortcutRankingRow, KeyMapping, RealtimeLogEntry, AppInfo, Theme,
   OverlaySettings, OverlayPosition, OverlayPositionMode, OverlayDisplayMode, OverlayMonitorMode,
-  OverlayMonitor, KeyAction, KeyPolicy, OverlayKeyLabels, KeyboardLayout, DatabaseEnvironmentSnapshot, DatabaseEnvironment,
-  AnalyticsRangeKey, RankingsSnapshot, KeyRankingItem, ApplicationRankingItem, UsageGraphSnapshot
+  OverlayMonitor, KeyAction, KeyPolicy, OverlayKeyLabels, KeyboardLayout, KeyboardInputMode, DatabaseEnvironmentSnapshot, DatabaseEnvironment,
+  AnalyticsRangeKey, RankingsSnapshot, KeyRankingItem, ApplicationRankingItem, UsageGraphSnapshot,
+  MappingEditSessionSnapshot, MappingEditValues
 } from './types.js'
 
 const titles: Record<string, string> = {
@@ -32,11 +33,17 @@ let realtimeReloadPending = false
 let currentOverlaySettings: OverlaySettings | null = null
 let currentOverlayMonitors: OverlayMonitor[] = []
 let currentOverlayLabels: OverlayKeyLabels | null = null
+let mappingEditSession: MappingEditSessionSnapshot | null = null
+let mappingDraftTimer: number | null = null
+let mappingDraftRevision = 0
+let pendingMappingLayout: KeyboardLayout | null = null
+let pendingMappingInputMode: KeyboardInputMode | null = null
+let mappingProfiles: import('./types.js').MappingProfile[] = []
 let overlayPreviewGeneration = 0
 let overlayPreviewTimer: number | null = null
 let currentDatabaseEnvironment: DatabaseEnvironmentSnapshot | null = null
 const selectedModifierColumns = new Set<string>()
-const activeMappingCategories = new Set(['alnum', 'modifier', 'function', 'system'])
+const activeMappingCategories = new Set(['alphabet', 'number', 'symbol', 'modifier', 'function', 'system', 'mouse', 'numpad'])
 
 let analyticsRange: AnalyticsRangeKey = 'today'
 let analyticsSnapshot: RankingsSnapshot | null = null
@@ -154,7 +161,8 @@ function rangeLabel(range: DateRange): string {
   return range.start === range.end ? range.start : `${range.start} ～ ${range.end}`
 }
 function kbd(shortcut: string): string {
-  return `<span class="kbd">${shortcut.split('+').map(key => `<span class="key">${escapeHtml(key)}</span>`).join('+')}</span>`
+  const labels = currentOverlayLabels?.keys ?? {}
+  return `<span class="kbd">${shortcut.split('+').map(key => `<span class="key">${escapeHtml(labels[key] ?? key)}</span>`).join('+')}</span>`
 }
 function emptyRow(columns: number, message = 'データがありません。'): string {
   return `<tr><td colspan="${columns}" class="empty">${escapeHtml(message)}</td></tr>`
@@ -492,7 +500,7 @@ async function loadShortcutDetail(preferred?: string): Promise<void> {
   const select = el<HTMLSelectElement>('shortcutSelect')
   const before = preferred ?? select.value
   const catalog = await api.listShortcuts(range.start, range.end)
-  select.innerHTML = catalog.length ? catalog.map(row => `<option value="${escapeHtml(row.shortcut)}">${escapeHtml(row.shortcut)} (${formatNumber(row.count)})</option>`).join('') : '<option value="">データなし</option>'
+  select.innerHTML = catalog.length ? catalog.map(row => `<option value="${escapeHtml(row.shortcut)}">${escapeHtml(formatShortcutLabel(row.shortcut))} (${formatNumber(row.count)})</option>`).join('') : '<option value="">データなし</option>'
   const values = catalog.map(row => row.shortcut)
   if (before && values.includes(before)) select.value = before
   const shortcut = select.value
@@ -507,6 +515,11 @@ async function loadShortcutDetail(preferred?: string): Promise<void> {
   el('detailAppCount').textContent = formatNumber(detail.applications.length)
   renderBars(el('detailApps'), detail.applications.map(row => ({ name: row.application, count: row.count })))
   renderChart(el('detailTrend'), detail.daily)
+}
+
+function formatShortcutLabel(shortcut: string): string {
+  const labels = currentOverlayLabels?.keys ?? {}
+  return shortcut.split('+').map(part => labels[part] ?? part).join('+')
 }
 async function openShortcutDetail(shortcut: string): Promise<void> {
   goPage('shortcut-detail')
@@ -820,15 +833,21 @@ const modifierPatterns: ModifierPattern[] = [
 const keyActionOptions: Array<[KeyAction, string]> = [
   ['ignore', 'なし'], ['continue_display', '続けて表示'], ['display_break', '表示して改行'], ['record_and_display_break', '記録と表示改行'],
 ]
-type MappingCategory = 'alnum' | 'modifier' | 'function' | 'system'
+type MappingCategory = 'alphabet' | 'number' | 'symbol' | 'modifier' | 'function' | 'system' | 'mouse' | 'numpad'
 type PolicyRow = { key: string; label: string; code: string; category: MappingCategory; categoryLabel: string }
 type PendingBulkMappingChange = { action: KeyAction | 'reset'; rows: HTMLTableRowElement[]; patterns: ModifierPattern[] }
 let pendingBulkMappingChange: PendingBulkMappingChange | null = null
 function keyCategory(name: string, virtualKey?: number): [MappingCategory, string] {
-  if (/^[A-Z0-9]$/.test(name)) return ['alnum', 'アルファベット・数字']
+  if (/^[A-Z]$/.test(name)) return ['alphabet', 'アルファベット']
+  if (/^[0-9]$/.test(name)) return ['number', '数字']
+  if (/^Num(?:[0-9]|Add|Subtract|Multiply|Divide|Decimal|Separator)$/.test(name)) return ['numpad', 'テンキー']
+  if (/^(Semicolon|Equal|Minus|Comma|Period|Slash|Backquote|LeftBracket|Backslash|RightBracket|Quote|Oem)/.test(name)) return ['symbol', '記号']
   if (/^(Ctrl|Control|Alt|Shift|Win|LControl|RControl|LShift|RShift|LAlt|RAlt|LWin|RWin)$/i.test(name)) return ['modifier', '修飾キー']
   if (/^F(?:[1-9]|1[0-9]|2[0-4])$/.test(name)) return ['function', 'ファンクションキー']
-  if (virtualKey && ((virtualKey >= 0x41 && virtualKey <= 0x5A) || (virtualKey >= 0x30 && virtualKey <= 0x39))) return ['alnum', 'アルファベット・数字']
+  if (virtualKey && virtualKey >= 0x41 && virtualKey <= 0x5A) return ['alphabet', 'アルファベット']
+  if (virtualKey && virtualKey >= 0x30 && virtualKey <= 0x39) return ['number', '数字']
+  if (virtualKey && ((virtualKey >= 0x60 && virtualKey <= 0x6F))) return ['numpad', 'テンキー']
+  if (virtualKey && ((virtualKey >= 0xBA && virtualKey <= 0xC0) || (virtualKey >= 0xDB && virtualKey <= 0xE2))) return ['symbol', '記号']
   return ['system', 'システム・その他']
 }
 function policyRows(mapping: KeyMapping): PolicyRow[] {
@@ -841,7 +860,7 @@ function policyRows(mapping: KeyMapping): PolicyRow[] {
     ['MouseX1', 'MouseX1', '5 / 0x05'], ['MouseX2', 'MouseX2', '6 / 0x06'],
     ['WheelUp', 'WheelUp', 'WM 0x020A'], ['WheelDown', 'WheelDown', 'WM 0x020A'], ['WheelLeft', 'WheelLeft', 'WM 0x020E'], ['WheelRight', 'WheelRight', 'WM 0x020E'],
   ]
-  return [...keyboard, ...mouse.map(([key, label, code]) => ({ key, label, code, category: 'system' as MappingCategory, categoryLabel: 'システム・その他' }))]
+  return [...keyboard, ...mouse.map(([key, label, code]) => ({ key, label, code, category: 'mouse' as MappingCategory, categoryLabel: 'マウス' }))]
 }
 function policyIdentity(pattern: ModifierPattern, key: string): string { return pattern.parts.length ? `${pattern.parts.join('+')}+${key}` : key }
 function defaultPolicyAction(policy: KeyPolicy, pattern: ModifierPattern): KeyAction { return pattern.parts.length ? policy.default_shortcut : policy.default_single_key }
@@ -850,17 +869,89 @@ function keyActionOptionsHtml(selected: KeyAction, allowRecord: boolean): string
   const normalized = allowRecord ? selected : safeSingleAction(selected)
   return keyActionOptions.filter(([value]) => allowRecord || value !== 'record_and_display_break').map(([value, label]) => `<option value="${value}" ${normalized === value ? 'selected' : ''}>${label}</option>`).join('')
 }
+function syncKeyboardInputModeUi(layout: KeyboardLayout): void {
+  el('keyboardInputModeControl').hidden = layout !== 'japanese-109'
+}
 function renderKeyMapping(mapping: KeyMapping, policy: KeyPolicy, labels: OverlayKeyLabels): void {
   currentKeyMapping = structuredClone(mapping); currentKeyPolicy = structuredClone(policy); currentOverlayLabels = structuredClone(labels)
   el<HTMLSelectElement>('keyboardLayout').value = labels.keyboard_layout
+  el<HTMLSelectElement>('keyboardInputMode').value = labels.input_mode ?? 'romaji'
+  syncKeyboardInputModeUi(labels.keyboard_layout)
   const head = el<HTMLTableSectionElement>('keyPolicyMatrixHead'); const body = el<HTMLTableSectionElement>('keyPolicyMatrixBody')
   head.innerHTML = `<tr><th class="key-category-col">分類</th><th class="key-code-col">キーコード</th><th class="key-name-col">テキス名</th><th class="key-label-col">キー表示名</th>${modifierPatterns.map(pattern => `<th class="key-policy-pattern ${selectedModifierColumns.has(pattern.id) ? 'selected-column' : ''}" data-pattern="${pattern.id}" title="クリックで一括変更対象列を選択">${escapeHtml(pattern.label)}</th>`).join('')}</tr>`
   const rows = policyRows(mapping)
   body.innerHTML = rows.map(row => `<tr data-category="${row.category}" data-key="${escapeHtml(row.key)}"><td class="key-category-col"><span class="category-pill">${escapeHtml(row.categoryLabel)}</span></td><td class="key-code-col key-code-text">${escapeHtml(row.code)}</td><th class="key-name-col">${escapeHtml(row.label)}</th><td class="key-label-col"><input class="input key-label-input" data-key-label="${escapeHtml(row.key)}" value="${escapeHtml(labels.keys[row.key] ?? row.key)}" /></td>${modifierPatterns.map(pattern => {
     const identity = policyIdentity(pattern, row.key); const fallback = defaultPolicyAction(policy, pattern); const selected = policy.overrides[identity] ?? fallback; const selectedColumn = selectedModifierColumns.has(pattern.id)
-    return `<td class="policy-cell ${selectedColumn ? 'selected-column' : ''}" data-pattern-cell="${pattern.id}"><select class="select key-policy-select ${pattern.id === 'none' ? 'security-locked' : ''}" data-policy-identity="${escapeHtml(identity)}" data-policy-default="${pattern.id === 'none' ? safeSingleAction(fallback) : fallback}" data-pattern="${pattern.id}" title="${pattern.id === 'none' ? '修飾なし単独入力は永続記録できません' : ''}">${keyActionOptionsHtml(selected, pattern.id !== 'none')}</select></td>`
+    const allowRecord = pattern.id !== 'none' || !['alphabet', 'number', 'symbol', 'numpad'].includes(row.category)
+    return `<td class="policy-cell ${selectedColumn ? 'selected-column' : ''}" data-pattern-cell="${pattern.id}"><select class="select key-policy-select ${!allowRecord ? 'security-locked' : ''}" data-policy-identity="${escapeHtml(identity)}" data-policy-default="${allowRecord ? fallback : safeSingleAction(fallback)}" data-pattern="${pattern.id}" title="${!allowRecord ? '文字入力系の修飾なし単独入力は永続記録できません' : ''}">${keyActionOptionsHtml(selected, allowRecord)}</select></td>`
   }).join('')}</tr>`).join('')
   applyMappingFilters(); updateMappingSummary(); syncBulkActionOffset()
+}
+
+function updateMappingDirtyUi(snapshot: MappingEditSessionSnapshot | null = mappingEditSession): void {
+  mappingEditSession = snapshot
+  const status = el<HTMLSpanElement>('mappingDirtyStatus')
+  const save = el<HTMLButtonElement>('mappingSave')
+  const cancel = el<HTMLButtonElement>('mappingCancel')
+  const dirty = Boolean(snapshot?.active && snapshot.dirty)
+  const busy = Boolean(snapshot?.busy)
+  status.hidden = !dirty
+  save.disabled = !dirty || busy
+  cancel.disabled = !dirty || busy
+}
+
+function renderMappingDraft(snapshot: MappingEditSessionSnapshot): void {
+  mappingEditSession = snapshot
+  renderKeyMapping(snapshot.draft.mapping, snapshot.draft.policy, snapshot.draft.labels)
+  updateMappingDirtyUi(snapshot)
+}
+
+async function loadMappingProfiles(): Promise<void> {
+  mappingProfiles = await api.listMappingProfiles()
+  const select = el<HTMLSelectElement>('mappingProfile')
+  select.innerHTML = mappingProfiles.map(profile => `<option value="${escapeHtml(profile.name)}">${escapeHtml(profile.name)}${profile.built_in ? '（組み込み）' : ''}</option>`).join('')
+  select.value = ''
+}
+
+function mappingDraftFromUi(): MappingEditValues {
+  return { mapping: mappingFromUi(), policy: policyFromUi(), labels: labelsFromUi() }
+}
+
+function scheduleMappingDraft(layout: KeyboardLayout | null = null): void {
+  if (!mappingEditSession?.active || mappingEditSession.busy) return
+  if (layout) pendingMappingLayout = layout
+  if (mappingDraftTimer !== null) window.clearTimeout(mappingDraftTimer)
+  mappingDraftTimer = window.setTimeout(() => {
+    mappingDraftTimer = null
+    void flushMappingDraft().catch(error => showToast(errorMessage(error)))
+  }, 200)
+}
+
+async function flushMappingDraft(): Promise<void> {
+  if (!mappingEditSession?.active || mappingEditSession.busy) return
+  const revision = ++mappingDraftRevision
+  const draft = mappingDraftFromUi()
+  const nextLayout = pendingMappingLayout
+  const nextInputMode = pendingMappingInputMode
+  pendingMappingLayout = null
+  pendingMappingInputMode = null
+  const snapshot = nextLayout
+    ? await api.applyMappingEditLayout(draft, nextLayout)
+    : nextInputMode
+      ? await api.applyMappingEditInputMode(draft, nextInputMode)
+    : await api.applyMappingEditDraft(draft)
+  if (revision === mappingDraftRevision) {
+    // Keep the table DOM intact for ordinary input/select edits so focus and caret
+    // are not lost while the debounced runtime update completes.
+    if (nextLayout) renderMappingDraft(snapshot)
+    else {
+      mappingEditSession = snapshot
+      currentKeyMapping = structuredClone(snapshot.draft.mapping)
+      currentKeyPolicy = structuredClone(snapshot.draft.policy)
+      currentOverlayLabels = structuredClone(snapshot.draft.labels)
+      updateMappingDirtyUi(snapshot)
+    }
+  }
 }
 function mappingFromUi(): KeyMapping {
   return structuredClone(currentKeyMapping ?? { version: 1, keyboard: [], mouse: { left_click: true, right_click: true, middle_click: true, x1_click: true, x2_click: true, wheel_up: true, wheel_down: true, wheel_left: true, wheel_right: true } })
@@ -870,13 +961,15 @@ function policyFromUi(): KeyPolicy {
   document.querySelectorAll<HTMLSelectElement>('#keyPolicyMatrixBody select[data-policy-identity]').forEach(select => {
     const identity = select.dataset.policyIdentity; const fallback = select.dataset.policyDefault as KeyAction | undefined; const pattern = select.dataset.pattern
     if (!identity) return
-    const chosen = pattern === 'none' ? safeSingleAction(select.value as KeyAction) : select.value as KeyAction
+    const category = select.closest<HTMLTableRowElement>('tr')?.dataset.category ?? ''
+    const allowRecord = pattern !== 'none' || !['alphabet', 'number', 'symbol', 'numpad'].includes(category)
+    const chosen = allowRecord ? select.value as KeyAction : safeSingleAction(select.value as KeyAction)
     if (fallback && chosen === fallback) delete policy.overrides[identity]; else policy.overrides[identity] = chosen
   })
   return policy
 }
 function labelsFromUi(): OverlayKeyLabels {
-  const labels = structuredClone(currentOverlayLabels ?? { version: 2, keyboard_layout: 'japanese-109' as KeyboardLayout, keys: {} })
+  const labels = structuredClone(currentOverlayLabels ?? { version: 2, keyboard_layout: 'japanese-109' as KeyboardLayout, input_mode: 'romaji' as KeyboardInputMode, keys: {} })
   document.querySelectorAll<HTMLInputElement>('#keyPolicyMatrixBody input[data-key-label]').forEach(input => {
     const key = input.dataset.keyLabel; if (!key) return; labels.keys[key] = input.value.trim() || key
   })
@@ -927,6 +1020,7 @@ function applyBulkMappingChange(): void {
     else select.value = pattern.id === 'none' ? safeSingleAction(pending.action) : pending.action
   }
   updateMappingSummary()
+  scheduleMappingDraft()
 }
 function bulkMappingChange(action: KeyAction | 'reset'): void {
   const rows = visibleMappingRows(); const patterns = modifierPatterns.filter(pattern => selectedModifierColumns.has(pattern.id))
@@ -941,8 +1035,16 @@ function bulkMappingChange(action: KeyAction | 'reset'): void {
   el<HTMLButtonElement>('cancelBulkMapping').focus()
 }
 async function loadKeyMapping(): Promise<void> {
-  const [mapping, policy, labels] = await Promise.all([api.keyMapping(), api.overlayKeyPolicy(), api.overlayKeyLabels()])
-  renderKeyMapping(mapping, policy, labels)
+  let snapshot: MappingEditSessionSnapshot
+  try {
+    snapshot = await api.beginMappingEditSession()
+  } catch (error) {
+    const code = typeof error === 'object' && error !== null && 'code' in error ? String((error as { code: unknown }).code) : ''
+    if (code !== 'MAPPING_EDIT_ACTIVE') throw error
+    snapshot = await api.getMappingEditSession()
+  }
+  renderMappingDraft(snapshot)
+  await loadMappingProfiles().catch(error => showToast(errorMessage(error)))
 }
 
 function browserKeySearchIdentity(event: KeyboardEvent): string | null {
@@ -1149,6 +1251,27 @@ async function loadPage(page = activePage): Promise<void> {
 }
 function goPage(id: string): void {
   if (!(id in titles)) id = 'dashboard'
+  if (id === activePage) return
+  if (activePage === 'key-mapping' && mappingEditSession?.active) {
+    if (mappingEditSession.busy || mappingEditSession.dirty || mappingDraftTimer !== null) {
+      showMappingLeaveModal()
+      return
+    }
+    void (async () => {
+      try {
+        mappingEditSession = await api.endMappingEditSession()
+        mappingEditSession = null
+        activatePage(id)
+      } catch (error) {
+        showToast(errorMessage(error))
+      }
+    })()
+    return
+  }
+  activatePage(id)
+}
+
+function activatePage(id: string): void {
   activePage = id
   document.querySelectorAll<HTMLElement>('.page').forEach(page => page.classList.toggle('active', page.id === id))
   document.querySelectorAll<HTMLButtonElement>('.nav button[data-page]').forEach(button => button.classList.toggle('active', button.dataset.page === id))
@@ -1157,6 +1280,12 @@ function goPage(id: string): void {
   if (rankingPages.includes(id)) rankingTree.classList.add('open')
   el('topTitle').textContent = titles[id] ?? 'ShortcutKeyCounter'
   void loadPage(id)
+}
+
+function showMappingLeaveModal(): void {
+  const modal = el<HTMLDivElement>('mappingLeaveModal')
+  modal.classList.add('show')
+  el<HTMLButtonElement>('closeMappingLeaveModal').focus()
 }
 
 async function withButton(button: HTMLButtonElement, action: () => Promise<void>): Promise<void> {
@@ -1559,7 +1688,8 @@ function bindEvents(): void {
     showToast('リアルタイムログ表示をクリアしました。')
   })
 
-  el('keyPolicyMatrixBody').addEventListener('change', updateMappingSummary)
+  el('keyPolicyMatrixBody').addEventListener('input', () => scheduleMappingDraft())
+  el('keyPolicyMatrixBody').addEventListener('change', () => { updateMappingSummary(); scheduleMappingDraft() })
   el('keyPolicyMatrixHead').addEventListener('click', event => {
     const header = (event.target as HTMLElement).closest<HTMLElement>('[data-pattern]'); const id = header?.dataset.pattern
     if (!id) return
@@ -1576,19 +1706,41 @@ function bindEvents(): void {
   el<HTMLSelectElement>('keyboardLayout').addEventListener('change', event => {
     const select = event.currentTarget as HTMLSelectElement
     const layout = select.value as KeyboardLayout
-    const previous = currentOverlayLabels?.keyboard_layout ?? 'japanese-109'
-    void (async () => {
-      try {
-        // Keep label edits made in the table before applying the new default table.
-        await api.setOverlayKeyLabels(labelsFromUi())
-        const labels = await api.setOverlayKeyboardLayout(layout)
-        if (currentKeyMapping && currentKeyPolicy) renderKeyMapping(currentKeyMapping, currentKeyPolicy, labels)
-        showToast(`${layout === 'japanese-109' ? '日本語109キー' : '英語104キー'}の表示名既定値を適用しました。`)
-      } catch (error) {
-        select.value = previous
-        showToast(errorMessage(error))
-      }
-    })()
+    // Layout and generated labels are part of the mapping draft; do not persist here.
+    scheduleMappingDraft(layout)
+  })
+  el<HTMLSelectElement>('keyboardInputMode').addEventListener('change', event => {
+    const mode = (event.currentTarget as HTMLSelectElement).value as KeyboardInputMode
+    pendingMappingInputMode = mode
+    scheduleMappingDraft()
+  })
+  el<HTMLSelectElement>('mappingProfile').addEventListener('change', async event => {
+    const name = (event.currentTarget as HTMLSelectElement).value
+    const profile = mappingProfiles.find(item => item.name === name)
+    if (!profile || !mappingEditSession?.active) return
+    try { renderMappingDraft(await api.applyMappingEditDraft(profile.values)) } catch (error) { showToast(errorMessage(error)) }
+  })
+  el<HTMLButtonElement>('mappingProfileSave').addEventListener('click', async () => {
+    if (!mappingEditSession?.active) return
+    await flushMappingDraft().catch(() => undefined)
+    const name = window.prompt('保存するプロファイル名を入力してください。')?.trim()
+    if (!name) return
+    try { await api.saveMappingProfile(name, mappingEditSession.draft); await loadMappingProfiles(); showToast(`プロファイル「${name}」を保存しました。`) } catch (error) { showToast(errorMessage(error)) }
+  })
+  el<HTMLButtonElement>('mappingProfileRename').addEventListener('click', async () => {
+    const select = el<HTMLSelectElement>('mappingProfile'); const oldName = select.value
+    const profile = mappingProfiles.find(item => item.name === oldName)
+    if (!profile || profile.built_in) { showToast('組み込みプロファイルは名前変更できません。'); return }
+    const newName = window.prompt('新しいプロファイル名を入力してください。', oldName)?.trim()
+    if (!newName) return
+    try { await api.renameMappingProfile(oldName, newName); await loadMappingProfiles(); showToast('プロファイル名を変更しました。') } catch (error) { showToast(errorMessage(error)) }
+  })
+  el<HTMLButtonElement>('mappingProfileDelete').addEventListener('click', async () => {
+    const select = el<HTMLSelectElement>('mappingProfile'); const name = select.value
+    const profile = mappingProfiles.find(item => item.name === name)
+    if (!profile || profile.built_in) { showToast('組み込みプロファイルは削除できません。'); return }
+    if (!window.confirm(`プロファイル「${name}」を削除しますか？`)) return
+    try { await api.deleteMappingProfile(name); await loadMappingProfiles(); showToast('プロファイルを削除しました。') } catch (error) { showToast(errorMessage(error)) }
   })
   el<HTMLButtonElement>('mappingEnableAll').addEventListener('click', () => bulkMappingChange('record_and_display_break'))
   el<HTMLButtonElement>('mappingContinueDisplay').addEventListener('click', () => bulkMappingChange('continue_display'))
@@ -1596,15 +1748,29 @@ function bindEvents(): void {
   el<HTMLButtonElement>('mappingDisableAll').addEventListener('click', () => bulkMappingChange('ignore'))
   el<HTMLButtonElement>('mappingReset').addEventListener('click', () => bulkMappingChange('reset'))
   el<HTMLButtonElement>('mappingSave').addEventListener('click', event => void withButton(event.currentTarget as HTMLButtonElement, async () => {
-    const mapping = await api.setKeyMapping(mappingFromUi())
-    const [policy, labels] = await Promise.all([api.setOverlayKeyPolicy(policyFromUi()), api.setOverlayKeyLabels(labelsFromUi())])
-    renderKeyMapping(mapping, policy, labels)
-    showToast('キーマッピングとオーバーレイ表示名を保存し、Captureへ即時反映しました。')
+    if (mappingDraftTimer !== null) { window.clearTimeout(mappingDraftTimer); mappingDraftTimer = null; await flushMappingDraft() }
+    updateMappingDirtyUi(mappingEditSession ? { ...mappingEditSession, busy: true } : mappingEditSession)
+    try {
+      const snapshot = await api.saveMappingEditSession()
+      renderMappingDraft(snapshot)
+      showToast('キーマッピングとキー表示名を保存し、Captureへ即時反映しました。')
+    } finally {
+      await api.mappingEditSessionStatus().then(updateMappingDirtyUi).catch(() => undefined)
+    }
+  }).catch(error => showToast(errorMessage(error))))
+  el<HTMLButtonElement>('mappingCancel').addEventListener('click', event => void withButton(event.currentTarget as HTMLButtonElement, async () => {
+    if (mappingDraftTimer !== null) { window.clearTimeout(mappingDraftTimer); mappingDraftTimer = null }
+    pendingMappingLayout = null
+    updateMappingDirtyUi(mappingEditSession ? { ...mappingEditSession, busy: true } : mappingEditSession)
+    try {
+      const snapshot = await api.cancelMappingEditSession()
+      renderMappingDraft(snapshot)
+      showToast('未保存のキーマッピング変更を取り消しました。')
+    } finally {
+      await api.mappingEditSessionStatus().then(updateMappingDirtyUi).catch(() => undefined)
+    }
   }).catch(error => showToast(errorMessage(error))))
   el<HTMLButtonElement>('mappingExport').addEventListener('click', event => void withButton(event.currentTarget as HTMLButtonElement, async () => {
-    const mapping = await api.setKeyMapping(mappingFromUi())
-    const [policy, labels] = await Promise.all([api.setOverlayKeyPolicy(policyFromUi()), api.setOverlayKeyLabels(labelsFromUi())])
-    renderKeyMapping(mapping, policy, labels)
     const result = await api.exportKeyMapping()
     showToast(`${result.path} を出力しました。`, { label: 'フォルダーを開く', run: () => api.openParentFolder(result.path) })
   }).catch(error => showToast(errorMessage(error))))
@@ -1619,6 +1785,13 @@ function bindEvents(): void {
     el<HTMLDivElement>('bulkMappingModal').classList.remove('show')
   })
   el<HTMLButtonElement>('confirmBulkMapping').addEventListener('click', applyBulkMappingChange)
+  el<HTMLButtonElement>('closeMappingLeaveModal').addEventListener('click', () => el<HTMLDivElement>('mappingLeaveModal').classList.remove('show'))
+  el<HTMLDivElement>('mappingLeaveModal').addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      el<HTMLButtonElement>('closeMappingLeaveModal').click()
+    }
+  })
   el<HTMLDivElement>('bulkMappingModal').addEventListener('keydown', event => {
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -1651,11 +1824,16 @@ async function boot(): Promise<void> {
     if (currentOverlaySettings) currentOverlaySettings.enabled = enabled
   })
   await api.onNavigatePage(page => goPage(page))
+  await api.onMappingUnsavedBlocked(() => {
+    if (activePage !== 'key-mapping') activatePage('key-mapping')
+    showMappingLeaveModal()
+  })
   await api.onRealtimeLogChanged(() => {
     if (activePage === 'realtime-log') void loadRealtimeLog().catch(error => showToast(errorMessage(error)))
   })
   const initialSettings = await api.settings().catch(() => null)
   if (initialSettings) applyTheme(initialSettings.theme)
+  currentOverlayLabels = await api.overlayKeyLabels().catch(() => null)
   await refreshCaptureStatus()
   await refreshDatabaseEnvironment().catch(() => undefined)
   await loadHelp().catch(() => undefined)

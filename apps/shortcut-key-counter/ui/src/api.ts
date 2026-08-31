@@ -5,7 +5,7 @@ import type {
   KeyMappingExportResult, RealtimeLogEntry, AppInfo, Theme, OverlaySettings, KeyPolicy,
   OverlayMonitor, OverlayKeyLabels, KeyboardLayout, DatabaseEnvironment, DatabaseEnvironmentSnapshot, SampleSourceStatus,
   SampleGenerationResult, DeleteBeforePreview, RankingsSnapshot, UsageGraphSnapshot, AnalyticsRangeKey,
-  DailyExportFilterSnapshot
+  DailyExportFilterSnapshot, MappingEditSessionSnapshot
 } from './types.js'
 
 declare global {
@@ -98,6 +98,19 @@ export const api = {
   keyMapping: () => invoke<KeyMapping>('get_key_mapping'),
   setKeyMapping: (mapping: KeyMapping) => invoke<KeyMapping>('set_key_mapping', { mapping }),
   exportKeyMapping: () => invoke<KeyMappingExportResult>('export_key_mapping_json'),
+  beginMappingEditSession: () => invoke<MappingEditSessionSnapshot>('begin_mapping_edit_session'),
+  getMappingEditSession: () => invoke<MappingEditSessionSnapshot>('get_mapping_edit_session'),
+  applyMappingEditDraft: (draft: MappingEditSessionSnapshot['draft']) => invoke<MappingEditSessionSnapshot>('apply_mapping_edit_draft', { draft }),
+  applyMappingEditLayout: (draft: MappingEditSessionSnapshot['draft'], layout: KeyboardLayout) => invoke<MappingEditSessionSnapshot>('apply_mapping_edit_layout', { draft, layout }),
+  applyMappingEditInputMode: (draft: MappingEditSessionSnapshot['draft'], mode: OverlayKeyLabels['input_mode']) => invoke<MappingEditSessionSnapshot>('apply_mapping_edit_input_mode', { draft, mode }),
+  listMappingProfiles: () => invoke<import('./types.js').MappingProfile[]>('list_mapping_profiles'),
+  saveMappingProfile: (name: string, values: MappingEditSessionSnapshot['draft']) => invoke<import('./types.js').MappingProfile>('save_mapping_profile', { name, values }),
+  deleteMappingProfile: (name: string) => invoke<void>('delete_mapping_profile', { name }),
+  renameMappingProfile: (oldName: string, newName: string) => invoke<import('./types.js').MappingProfile>('rename_mapping_profile', { oldName, newName }),
+  saveMappingEditSession: () => invoke<MappingEditSessionSnapshot>('save_mapping_edit_session'),
+  cancelMappingEditSession: () => invoke<MappingEditSessionSnapshot>('cancel_mapping_edit_session'),
+  endMappingEditSession: () => invoke<MappingEditSessionSnapshot>('end_mapping_edit_session'),
+  mappingEditSessionStatus: () => invoke<MappingEditSessionSnapshot>('mapping_edit_session_status'),
   realtimeLogs: (afterSequence: number, limit = 200) => invoke<RealtimeLogEntry[]>('get_realtime_logs', { afterSequence, limit }),
   clearRealtimeLogs: () => invoke<void>('clear_realtime_logs'),
   appInfo: () => invoke<AppInfo>('get_app_info'),
@@ -105,5 +118,6 @@ export const api = {
   onCaptureStateChanged: (handler: (enabled: boolean) => void) => listen<boolean>('capture-state-changed', handler),
   onOverlayEnabledChanged: (handler: (enabled: boolean) => void) => listen<boolean>('overlay-enabled-changed', handler),
   onNavigatePage: (handler: (page: string) => void) => listen<string>('navigate-page', handler),
+  onMappingUnsavedBlocked: (handler: () => void) => listen<null>('mapping-unsaved-blocked', () => handler()),
   onRealtimeLogChanged: (handler: (sequence: number) => void) => listen<number>('realtime-log-changed', handler),
 }

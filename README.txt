@@ -17,7 +17,7 @@ Start:
   4. 画面を閉じても通知領域で計測を継続します。完全終了は通知領域メニューの「終了」を選びます。
 
 v0.1.4 highlights:
-- 修飾なし単独入力はkeyboard/mouse/wheelを問わず永続記録禁止。通常mouse clickだけOverlay表示可。
+- 修飾なしの英字・数字・記号・テンキーは永続記録禁止。Fキー・システムキー・mouse・wheelは明示設定時だけ記録可。
 - Security GateはOverlay/Realtime Log/DBより前でFail Closed。
 - Overlay設定combo/固定monitorの操作不具合を修正。
 - DuplicateGuard 0.0〜10.0秒、詳細event保持1〜365日をruntime設定化。
@@ -39,7 +39,7 @@ Data:
   %LOCALAPPDATA%\ShortcutKeyCounter\overlay-theme.json
 
 重要:
-修飾なし単独入力の記録禁止はRuntime側のSecurity invariantです。UI/JSONを変更しても解除できません。
+修飾なしの英字・数字・記号・テンキー入力の記録禁止はRuntime側のSecurity invariantです。UI/JSONを変更しても解除できません。Fキー・システムキー・mouse・wheelは、明示設定とSecurity Gate通過を条件に記録できます。
 計測・集計・CSV機能はネットワーク通信を行わず、計測データを外部へ自動送信しません。
 ただし、単独キー表示中の画面共有などでは入力が画面へ公開される可能性があります。パスワードや機密情報を入力する前に、画面共有、オーバーレイ、計測を停止してください。
 

@@ -5,8 +5,8 @@ use serde::Serialize;
 use shortcut_core::key_mapping::KeyMapping;
 use shortcut_storage::repositories::excluded_app_repository::ExcludedApp;
 use shortcut_storage::statistics::{
-    ApplicationStats, DailyPoint, DashboardSummary, DataBounds, RankedApplication, RankedShortcut,
-    HourlyTrend, ShortcutDetail, ShortcutRankingRow,
+    ApplicationStats, DailyPoint, DashboardSummary, DataBounds, HourlyTrend, RankedApplication,
+    RankedShortcut, ShortcutDetail, ShortcutRankingRow,
 };
 use std::collections::BTreeMap;
 use tauri::{AppHandle, Manager, State};
@@ -20,11 +20,12 @@ use crate::command_error::CommandError;
 use crate::database_environment::{DatabaseEnvironment, DatabaseEnvironmentSnapshot};
 use crate::key_mapping_state::{self, KeyMappingExportResult};
 use crate::key_policy::KeyPolicyConfig;
-use crate::mapping_edit_session::{MappingEditSessionSnapshot, MappingEditValuesDto};
 use crate::maintenance::{
     downloads_or_fallback, BackupResult, ClearResult, DeleteBeforePreview, ExportResult,
 };
-use crate::overlay::config::{KeyboardLayout, OverlayKeyLabels};
+use crate::mapping_edit_session::{MappingEditSessionSnapshot, MappingEditValuesDto};
+use crate::mapping_profiles::{self, MappingProfile};
+use crate::overlay::config::{KeyboardInputMode, KeyboardLayout, OverlayKeyLabels};
 use crate::realtime_log::RealtimeLogEntry;
 use crate::sample_data::{SampleGenerationResult, SampleSourceStatus};
 use crate::tray::{sync_capture_ui, sync_overlay_ui};
@@ -492,9 +493,9 @@ pub fn reset_overlay_appearance(
     let enabled = state
         .overlay_enabled()
         .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))?;
-    let policy = state
-        .key_policy_snapshot()
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "キーポリシーを読み込めませんでした。"))?;
+    let policy = state.key_policy_snapshot().map_err(|_| {
+        CommandError::new("SETTINGS_FAILED", "キーポリシーを読み込めませんでした。")
+    })?;
     Ok(OverlaySettingsDto::from_parts(
         &config,
         enabled,
@@ -710,7 +711,7 @@ pub fn generate_sample_data(
         })?;
 
     // Realtime Log用に偽Captureを注入せず、検証DBへ生成済みの「DB記録対象」
-    // 前日イベントからview-modelだけを構成する。修飾なし単独入力を別ログへ永続化しない。
+    // 前日イベントからview-modelだけを構成し、Capture外の別ログへ入力を永続化しない。
     let yesterday = Local::now().date_naive() - Duration::days(1);
     let realtime_samples = crate::sample_data::previous_day_realtime_samples(
         &target, yesterday, 200,
@@ -760,15 +761,28 @@ pub fn get_daily_export_filter(
     state: State<'_, AppState>,
 ) -> Result<DailyExportFilterSnapshot, CommandError> {
     let db = db_lock(&state)?;
-    let applications = command_api::list_daily_export_applications(&db).map_err(|_| CommandError::db())?;
-    let (first_date, last_date) = command_api::daily_export_date_bounds(&db).map_err(|_| CommandError::db())?;
+    let applications =
+        command_api::list_daily_export_applications(&db).map_err(|_| CommandError::db())?;
+    let (first_date, last_date) =
+        command_api::daily_export_date_bounds(&db).map_err(|_| CommandError::db())?;
     drop(db);
     let settings = settings_db_lock(&state)?;
-    let selected = command_api::daily_export_applications(&settings)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVのアプリ選択を読み込めませんでした。"))?;
-    let name = command_api::daily_export_name(&settings)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVの出力名を読み込めませんでした。"))?;
-    Ok(DailyExportFilterSnapshot { applications, selected, first_date, last_date, name })
+    let selected = command_api::daily_export_applications(&settings).map_err(|_| {
+        CommandError::new(
+            "SETTINGS_FAILED",
+            "日次CSVのアプリ選択を読み込めませんでした。",
+        )
+    })?;
+    let name = command_api::daily_export_name(&settings).map_err(|_| {
+        CommandError::new("SETTINGS_FAILED", "日次CSVの出力名を読み込めませんでした。")
+    })?;
+    Ok(DailyExportFilterSnapshot {
+        applications,
+        selected,
+        first_date,
+        last_date,
+        name,
+    })
 }
 
 #[tauri::command]
@@ -778,10 +792,15 @@ pub fn set_daily_export_filter(
     name: String,
 ) -> Result<Vec<String>, CommandError> {
     let settings = settings_db_lock(&state)?;
-    command_api::set_daily_export_applications_command(&settings, &applications)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVのアプリ選択を保存できませんでした。"))?;
-    command_api::set_daily_export_name_command(&settings, &name)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "日次CSVの出力名を保存できませんでした。"))?;
+    command_api::set_daily_export_applications_command(&settings, &applications).map_err(|_| {
+        CommandError::new(
+            "SETTINGS_FAILED",
+            "日次CSVのアプリ選択を保存できませんでした。",
+        )
+    })?;
+    command_api::set_daily_export_name_command(&settings, &name).map_err(|_| {
+        CommandError::new("SETTINGS_FAILED", "日次CSVの出力名を保存できませんでした。")
+    })?;
     Ok(applications)
 }
 
@@ -803,12 +822,22 @@ pub fn export_daily_csv(
     let end_date = end_date.as_deref().map(parse_date).transpose()?;
     if let (Some(start), Some(end)) = (start_date, end_date) {
         if start > end {
-            return Err(CommandError::new("INVALID_DATE_RANGE", "開始日は終了日以前にしてください。"));
+            return Err(CommandError::new(
+                "INVALID_DATE_RANGE",
+                "開始日は終了日以前にしてください。",
+            ));
         }
     }
     let db = db_lock(&state)?;
-    command_api::export_daily_csv_command(&db, directory, applications.as_deref(), start_date, end_date, name.as_deref())
-        .map_err(|_| CommandError::new("EXPORT_FAILED", "日次集計CSVを出力できませんでした。"))
+    command_api::export_daily_csv_command(
+        &db,
+        directory,
+        applications.as_deref(),
+        start_date,
+        end_date,
+        name.as_deref(),
+    )
+    .map_err(|_| CommandError::new("EXPORT_FAILED", "日次集計CSVを出力できませんでした。"))
 }
 
 #[tauri::command]
@@ -820,8 +849,12 @@ pub fn export_events_csv(state: State<'_, AppState>) -> Result<ExportResult, Com
         )
     })?;
     let db = db_lock(&state)?;
-    command_api::export_events_csv_command(&db, directory)
-        .map_err(|_| CommandError::new("EXPORT_FAILED", "詳細ショートカット履歴CSVを出力できませんでした。"))
+    command_api::export_events_csv_command(&db, directory).map_err(|_| {
+        CommandError::new(
+            "EXPORT_FAILED",
+            "詳細ショートカット履歴CSVを出力できませんでした。",
+        )
+    })
 }
 
 #[tauri::command]
@@ -941,6 +974,73 @@ pub fn set_key_mapping(
 }
 
 #[tauri::command]
+pub fn set_overlay_keyboard_input_mode(
+    state: State<'_, AppState>,
+    mode: KeyboardInputMode,
+) -> Result<OverlayKeyLabels, CommandError> {
+    state
+        .replace_overlay_keyboard_input_mode(mode)
+        .map_err(|_| {
+            CommandError::new(
+                "KEY_LABELS_FAILED",
+                "キーボード入力モードを保存できませんでした。",
+            )
+        })
+}
+
+#[tauri::command]
+pub fn list_mapping_profiles(
+    state: State<'_, AppState>,
+) -> Result<Vec<MappingProfile>, CommandError> {
+    let snapshot = state.mapping_edit_snapshot().map_err(mapping_edit_error)?;
+    mapping_profiles::list(
+        &mapping_profiles::path(&state.paths.app_dir),
+        &snapshot.draft,
+    )
+    .map_err(|_| CommandError::new("PROFILE_FAILED", "プロファイルを読み込めませんでした。"))
+}
+
+#[tauri::command]
+pub fn save_mapping_profile(
+    state: State<'_, AppState>,
+    name: String,
+    values: MappingEditValuesDto,
+) -> Result<MappingProfile, CommandError> {
+    mapping_profiles::upsert(
+        &mapping_profiles::path(&state.paths.app_dir),
+        MappingProfile {
+            name,
+            built_in: false,
+            values,
+        },
+    )
+    .map_err(|error| CommandError::new("PROFILE_FAILED", error.to_string()))
+}
+
+#[tauri::command]
+pub fn delete_mapping_profile(
+    state: State<'_, AppState>,
+    name: String,
+) -> Result<(), CommandError> {
+    mapping_profiles::delete(&mapping_profiles::path(&state.paths.app_dir), &name)
+        .map_err(|error| CommandError::new("PROFILE_FAILED", error.to_string()))
+}
+
+#[tauri::command]
+pub fn rename_mapping_profile(
+    state: State<'_, AppState>,
+    old_name: String,
+    new_name: String,
+) -> Result<MappingProfile, CommandError> {
+    mapping_profiles::rename(
+        &mapping_profiles::path(&state.paths.app_dir),
+        &old_name,
+        &new_name,
+    )
+    .map_err(|error| CommandError::new("PROFILE_FAILED", error.to_string()))
+}
+
+#[tauri::command]
 pub fn begin_mapping_edit_session(
     state: State<'_, AppState>,
 ) -> Result<MappingEditSessionSnapshot, CommandError> {
@@ -961,6 +1061,28 @@ pub fn apply_mapping_edit_draft(
 ) -> Result<MappingEditSessionSnapshot, CommandError> {
     state
         .apply_mapping_edit_draft(draft)
+        .map_err(mapping_edit_error)
+}
+
+#[tauri::command]
+pub fn apply_mapping_edit_layout(
+    state: State<'_, AppState>,
+    draft: MappingEditValuesDto,
+    layout: KeyboardLayout,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state
+        .apply_mapping_edit_layout(draft, layout)
+        .map_err(mapping_edit_error)
+}
+
+#[tauri::command]
+pub fn apply_mapping_edit_input_mode(
+    state: State<'_, AppState>,
+    draft: MappingEditValuesDto,
+    mode: KeyboardInputMode,
+) -> Result<MappingEditSessionSnapshot, CommandError> {
+    state
+        .apply_mapping_edit_input_mode(draft, mode)
         .map_err(mapping_edit_error)
 }
 
@@ -998,6 +1120,8 @@ fn mapping_edit_error(error: crate::app_state::AppStateError) -> CommandError {
         "MAPPING_EDIT_DIRTY"
     } else if message.contains("処理中") {
         "MAPPING_EDIT_BUSY"
+    } else if message.contains("既に開始") {
+        "MAPPING_EDIT_ACTIVE"
     } else if message.contains("開始されていません") {
         "MAPPING_EDIT_INACTIVE"
     } else {

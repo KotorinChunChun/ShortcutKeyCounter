@@ -28,8 +28,8 @@ use crate::mapping_edit_session::{
     MappingEditValues, MappingEditValuesDto,
 };
 use crate::overlay::config::{
-    load_labels, load_theme, save_labels_atomic, save_theme_atomic, KeyboardLayout, OverlayConfig,
-    OverlayConfigError, OverlayKeyLabels,
+    load_labels, load_theme, save_labels_atomic, save_theme_atomic, KeyboardInputMode,
+    KeyboardLayout, OverlayConfig, OverlayConfigError, OverlayKeyLabels,
 };
 use crate::overlay::OverlayHandle;
 use crate::realtime_log::RealtimeLog;
@@ -380,6 +380,45 @@ impl AppState {
         let values = session.apply_draft(values.into())?;
         self.apply_mapping_runtime(&values)?;
         Ok(session.snapshot())
+    }
+
+    pub fn replace_overlay_keyboard_input_mode(
+        &self,
+        mode: KeyboardInputMode,
+    ) -> Result<OverlayKeyLabels, AppStateError> {
+        self.replace_overlay_labels(self.overlay_labels().with_input_mode(mode))
+    }
+
+    pub fn apply_mapping_edit_layout(
+        &self,
+        values: MappingEditValuesDto,
+        layout: KeyboardLayout,
+    ) -> Result<MappingEditSessionSnapshot, AppStateError> {
+        let mut values: MappingEditValues = values.into();
+        values.labels = values.labels.with_layout(layout);
+        self.apply_mapping_edit_draft(MappingEditValuesDto::from(&values))
+    }
+
+    pub fn apply_mapping_edit_input_mode(
+        &self,
+        values: MappingEditValuesDto,
+        mode: KeyboardInputMode,
+    ) -> Result<MappingEditSessionSnapshot, AppStateError> {
+        let mut values: MappingEditValues = values.into();
+        values.labels = values.labels.with_input_mode(mode);
+        self.apply_mapping_edit_draft(MappingEditValuesDto::from(&values))
+    }
+
+    /// Window Close / process ExitRequested / Tray終了の共通ガード。
+    /// state取得不能時は安全側（ブロック）に倒す。
+    pub fn mapping_edit_is_blocking(&self) -> bool {
+        self.mapping_edit_session
+            .lock()
+            .map(|session| {
+                let snapshot = session.snapshot();
+                snapshot.dirty || snapshot.busy
+            })
+            .unwrap_or(true)
     }
 
     pub fn save_mapping_edit(&self) -> Result<MappingEditSessionSnapshot, AppStateError> {

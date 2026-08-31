@@ -145,7 +145,7 @@ fn export_daily_csv_at(
         write_csv_record(writer, ["date", "shortcut", "application", "count"])?;
         let mut row_count = 0_u64;
         match applications {
-            Some(applications) if applications.is_empty() => {}
+            Some([]) => {}
             Some(applications) => {
                 let mut conditions = Vec::new();
                 let mut values = Vec::new();
@@ -157,8 +157,7 @@ fn export_daily_csv_at(
                     conditions.push("date <= ?".to_owned());
                     values.push(end.to_string());
                 }
-                let placeholders = std::iter::repeat("?")
-                    .take(applications.len())
+                let placeholders = std::iter::repeat_n("?", applications.len())
                     .collect::<Vec<_>>()
                     .join(",");
                 conditions.push(format!("application IN ({placeholders})"));
@@ -209,9 +208,12 @@ fn sanitize_filename_component(value: &str) -> String {
         .chars()
         .filter(|character| !character.is_control())
         .map(|character| {
-            if matches!(character, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') {
-                '_'
-            } else if character.is_whitespace() {
+            if character.is_whitespace()
+                || matches!(
+                    character,
+                    '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+                )
+            {
                 '_'
             } else {
                 character
@@ -231,7 +233,12 @@ fn write_daily_row(
     let count: i64 = row.get(3)?;
     write_csv_record(
         writer,
-        [date.as_str(), shortcut.as_str(), application.as_str(), &count.to_string()],
+        [
+            date.as_str(),
+            shortcut.as_str(),
+            application.as_str(),
+            &count.to_string(),
+        ],
     )?;
     Ok(())
 }
@@ -502,7 +509,16 @@ mod tests {
     fn daily_csv_has_bom_header_filename_and_escaped_content() {
         let connection = fixture_connection();
         let directory = temp_directory("daily-csv");
-        let result = export_daily_csv_at(&connection, &directory, fixed_timestamp(), None, None, None, None).expect("CSV");
+        let result = export_daily_csv_at(
+            &connection,
+            &directory,
+            fixed_timestamp(),
+            None,
+            None,
+            None,
+            None,
+        )
+        .expect("CSV");
         assert_eq!(result.rows, 2);
         assert_eq!(
             result.path.file_name().and_then(|name| name.to_str()),
@@ -553,7 +569,11 @@ mod tests {
         )
         .expect("filtered CSV");
         assert_eq!(result.rows, 0);
-        let file_name = result.path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        let file_name = result
+            .path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or_default();
         assert!(file_name.contains("山田_集計"));
         let _ = fs::remove_dir_all(directory);
     }
@@ -627,11 +647,9 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM shortcut_daily", [], |row| row.get(0))
             .expect("daily");
         let hourly: i64 = connection
-            .query_row(
-                "SELECT COUNT(*) FROM shortcut_hourly_summary",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM shortcut_hourly_summary", [], |row| {
+                row.get(0)
+            })
             .expect("hourly");
         let settings: i64 = connection
             .query_row("SELECT COUNT(*) FROM settings", [], |row| row.get(0))

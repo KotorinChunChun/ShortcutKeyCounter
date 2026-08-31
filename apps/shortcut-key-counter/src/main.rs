@@ -6,8 +6,8 @@ use shortcut_key_counter::app_state::AppState;
 use shortcut_key_counter::tauri_commands;
 use shortcut_key_counter::tray::setup_tray;
 use shortcut_key_counter::window_manager::{
-    destroy_main_window, request_show_main_window, request_show_settings_window,
-    should_prevent_process_exit, MAIN_WINDOW_LABEL,
+    destroy_main_window, notify_mapping_unsaved_blocked, request_show_main_window,
+    request_show_settings_window, should_prevent_process_exit, MAIN_WINDOW_LABEL,
 };
 use shortcut_windows::single_instance::{
     acquire_or_notify_existing, wait_for_activation, SingleInstanceStatus,
@@ -103,9 +103,18 @@ fn main() {
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<AppState>();
-                if !state.is_exiting() {
+                if !state.is_exiting() && state.mapping_edit_is_blocking() {
                     api.prevent_close();
-                    let _ = destroy_main_window(window.app_handle());
+                    notify_mapping_unsaved_blocked(window.app_handle());
+                } else if !state.is_exiting() {
+                    // cleanな画面離脱ではsessionを破棄し、labels overrideも解除する。
+                    if state.end_mapping_edit().is_err() {
+                        api.prevent_close();
+                        notify_mapping_unsaved_blocked(window.app_handle());
+                    } else {
+                        api.prevent_close();
+                        let _ = destroy_main_window(window.app_handle());
+                    }
                 }
             }
         })
@@ -151,6 +160,11 @@ fn main() {
             tauri_commands::get_overlay_key_labels,
             tauri_commands::set_overlay_key_labels,
             tauri_commands::set_overlay_keyboard_layout,
+            tauri_commands::set_overlay_keyboard_input_mode,
+            tauri_commands::list_mapping_profiles,
+            tauri_commands::save_mapping_profile,
+            tauri_commands::delete_mapping_profile,
+            tauri_commands::rename_mapping_profile,
             tauri_commands::get_overlay_key_policy,
             tauri_commands::set_overlay_key_policy,
             tauri_commands::reload_overlay_assets,
@@ -179,6 +193,8 @@ fn main() {
             tauri_commands::begin_mapping_edit_session,
             tauri_commands::get_mapping_edit_session,
             tauri_commands::apply_mapping_edit_draft,
+            tauri_commands::apply_mapping_edit_layout,
+            tauri_commands::apply_mapping_edit_input_mode,
             tauri_commands::save_mapping_edit_session,
             tauri_commands::cancel_mapping_edit_session,
             tauri_commands::end_mapping_edit_session,
@@ -194,7 +210,13 @@ fn main() {
 
     let exit_code = app.run_return(|app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
-            let exiting = app_handle.state::<AppState>().is_exiting();
+            let state = app_handle.state::<AppState>();
+            let exiting = state.is_exiting();
+            if !exiting && state.mapping_edit_is_blocking() {
+                api.prevent_exit();
+                notify_mapping_unsaved_blocked(app_handle);
+                return;
+            }
             if should_prevent_process_exit(exiting) {
                 api.prevent_exit();
             }

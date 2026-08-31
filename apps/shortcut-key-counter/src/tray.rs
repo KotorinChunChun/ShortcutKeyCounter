@@ -10,7 +10,7 @@ use tauri::{App, AppHandle, Emitter, Manager, Wry};
 use crate::app_state::AppState;
 use crate::capture_health::HealthLevel;
 use crate::security_gate::SecurityStopReason;
-use crate::window_manager::request_show_main_window;
+use crate::window_manager::{notify_mapping_unsaved_blocked, request_show_main_window};
 
 pub struct TrayUiState {
     capture_item: MenuItem<Wry>,
@@ -70,8 +70,13 @@ pub fn setup_tray(app: &App) -> tauri::Result<()> {
                 }
             }
             "quit" => {
-                app.state::<AppState>().mark_exiting();
-                app.exit(0);
+                let state = app.state::<AppState>();
+                if state.mapping_edit_is_blocking() {
+                    notify_mapping_unsaved_blocked(app);
+                } else {
+                    state.mark_exiting();
+                    app.exit(0);
+                }
             }
             _ => {}
         })

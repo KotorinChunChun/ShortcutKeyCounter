@@ -1,6 +1,7 @@
 use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, NaiveTime, Timelike, Weekday};
 use rusqlite::{params, Connection, TransactionBehavior};
 use serde::Serialize;
+use shortcut_core::eligibility::is_unmodified_recordable_identity;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -191,7 +192,7 @@ fn distinct_values(connection: &Connection, column: &str) -> Result<Vec<String>,
 
 fn is_recordable_sample_shortcut(shortcut: &str) -> bool {
     let mut has_modifier = false;
-    let mut has_primary = false;
+    let mut primary = None;
     for part in shortcut
         .split('+')
         .map(str::trim)
@@ -199,11 +200,11 @@ fn is_recordable_sample_shortcut(shortcut: &str) -> bool {
     {
         if matches!(part, "Ctrl" | "Alt" | "Shift" | "Win") {
             has_modifier = true;
-        } else {
-            has_primary = true;
+        } else if primary.replace(part).is_some() {
+            return false;
         }
     }
-    has_modifier && has_primary
+    primary.is_some_and(|identity| has_modifier || is_unmodified_recordable_identity(identity))
 }
 
 fn build_day_weights(start: NaiveDate, rng: &mut Lcg) -> Vec<f64> {
@@ -620,7 +621,7 @@ mod tests {
     }
 
     #[test]
-    fn historical_unmodified_shortcuts_are_excluded_from_sample_population() {
+    fn historical_prohibited_unmodified_shortcuts_are_excluded_from_sample_population() {
         let production = database();
         production.execute(
             "INSERT INTO shortcut_events(occurred_at, shortcut, application) VALUES ('2026-08-01 09:00:00.000', 'A', 'Code.exe')",
@@ -639,6 +640,27 @@ mod tests {
             generate_sample_data(&production, &mut target, 10),
             Err(SampleDataError::EmptySource)
         ));
+    }
+
+    #[test]
+    fn historical_allowed_unmodified_shortcuts_are_available_to_sample_population() {
+        let production = database();
+        for (time, shortcut) in [
+            ("09:00:00", "F5"),
+            ("09:01:00", "MouseLeft"),
+            ("09:02:00", "WheelLeft"),
+        ] {
+            production
+                .execute(
+                    "INSERT INTO shortcut_events(occurred_at, shortcut, application) VALUES (?1, ?2, 'Code.exe')",
+                    params![format!("2026-08-01 {time}.000"), shortcut],
+                )
+                .unwrap();
+        }
+        let status = source_status(&production).unwrap();
+        assert_eq!(status.application_count, 1);
+        assert_eq!(status.shortcut_count, 3);
+        assert!(status.can_generate);
     }
 
     #[test]

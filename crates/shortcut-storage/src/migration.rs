@@ -3,8 +3,7 @@ use rusqlite::Connection;
 use crate::StorageError;
 
 const INITIAL_SCHEMA: &str = include_str!("../../../migrations/0001_initial.sql");
-const HOURLY_SUMMARY_MIGRATION: &str =
-    include_str!("../../../migrations/0002_hourly_summary.sql");
+const HOURLY_SUMMARY_MIGRATION: &str = include_str!("../../../migrations/0002_hourly_summary.sql");
 const BASE_SCHEMA_VERSION: i64 = 2;
 pub const CURRENT_SCHEMA_VERSION: u32 = 3;
 
@@ -117,9 +116,11 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM shortcut_events", [], |row| row.get(0))
             .expect("event count");
         let daily_count: i64 = connection
-            .query_row("SELECT count FROM shortcut_daily WHERE date = '2026-08-16'", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT count FROM shortcut_daily WHERE date = '2026-08-16'",
+                [],
+                |row| row.get(0),
+            )
             .expect("daily-only count");
         let hourly: (String, i64, i64) = connection
             .query_row(
@@ -155,7 +156,9 @@ mod tests {
         run_migrations(&mut connection).expect("second migration");
 
         let version: i64 = connection
-            .query_row("SELECT schema_version FROM schema_meta", [], |row| row.get(0))
+            .query_row("SELECT schema_version FROM schema_meta", [], |row| {
+                row.get(0)
+            })
             .expect("schema version");
         let value: String = connection
             .query_row(

@@ -26,6 +26,7 @@ pub mod key_mapping_state;
 pub mod key_policy;
 pub mod key_search;
 pub mod mapping_edit_session;
+pub mod mapping_profiles;
 pub mod overlay;
 pub mod realtime_log;
 pub mod window_manager;

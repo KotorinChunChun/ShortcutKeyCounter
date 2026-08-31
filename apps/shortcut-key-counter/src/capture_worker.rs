@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 use crossbeam_channel::{bounded, select, Receiver, Sender, TrySendError};
 use rusqlite::Connection;
 use shortcut_core::duplicate_guard::DuplicateGuard;
+use shortcut_core::eligibility::is_unmodified_recording_prohibited;
 use shortcut_core::key_mapping::KeyMapping;
 use shortcut_core::key_names::{is_modifier_key, normalize_single_key};
 use shortcut_core::model::{CapturedInput, MainInput, RecordableEvent};
@@ -502,20 +503,6 @@ fn build_overlay_candidate_for(
         OverlayInputKind::SingleKey
     };
 
-    // RULE-UI-011: modifier-only is rejected above; wheel-only is also intentionally
-    // invisible. Modified wheel gestures remain normal shortcut candidates.
-    if !has_modifier
-        && matches!(
-            input.main_input,
-            MainInput::WheelUp
-                | MainInput::WheelDown
-                | MainInput::WheelLeft
-                | MainInput::WheelRight
-        )
-    {
-        return Err(OverlayCandidateError::Ineligible);
-    }
-
     let (display_key, normalized_shortcut) = match kind {
         OverlayInputKind::Shortcut => {
             let shortcut = normalize_input(&input.modifiers, &input.main_input).map_err(
@@ -613,11 +600,25 @@ fn process_captured_input_detailed(
 
     let action = key_policy.resolve(candidate.identity(), candidate.kind);
     let mut decision = KeyDecision::from(action);
-    // RULE-SEC-001 / RULE-SEC-006: no unmodified physical input may ever become
-    // persistent data, even if a hand-edited policy JSON asks for recording.
-    // Overlay display remains available for ordinary keyboard/mouse single inputs.
-    if !has_any_modifier(&input.modifiers) {
+    // RULE-SEC-001 / RULE-SEC-006: unmodified letters, digits, symbols and numpad
+    // inputs never become persistent data, even if policy JSON requests recording.
+    if !has_any_modifier(&input.modifiers)
+        && matches!(input.main_input, MainInput::Key(vk) if is_unmodified_recording_prohibited(vk))
+    {
         decision.record = false;
+    }
+    // RULE-UI-011: wheel-only input can be recorded when explicitly configured,
+    // but remains hidden from Overlay.
+    if !has_any_modifier(&input.modifiers)
+        && matches!(
+            input.main_input,
+            MainInput::WheelUp
+                | MainInput::WheelDown
+                | MainInput::WheelLeft
+                | MainInput::WheelRight
+        )
+    {
+        decision.display = false;
     }
     let mut candidate = candidate;
     candidate.display_break = decision.break_row;
@@ -627,8 +628,8 @@ fn process_captured_input_detailed(
         }
     }
 
-    // UI/JSONがどのactionを指定しても、修飾なし単独入力は上のSecurity invariantで
-    // record=falseへ固定される。修飾付き入力だけがRecordAndDisplayBreakで記録可能。
+    // UI/JSONがどのactionを指定しても、修飾なしの英数記号は上のSecurity invariantで
+    // record=falseへ固定される。
     if action == KeyAction::Ignore {
         return Ok(ProcessTrace {
             outcome: ProcessOutcome::DroppedIgnored,
@@ -805,6 +806,43 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM shortcut_events", [], |row| row.get(0))
             .expect("event count");
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn unmodified_non_text_inputs_can_be_recorded_when_policy_allows() {
+        for (main_input, identity) in [
+            (MainInput::Key(0x74), "F5"),
+            (MainInput::MouseLeft, "MouseLeft"),
+            (MainInput::WheelLeft, "WheelLeft"),
+        ] {
+            let mut connection = connection();
+            let mut guard = DuplicateGuard::new();
+            let excluded = HashSet::new();
+            let mut input = event("Code.exe", main_input);
+            input.modifiers = ModifierState::default();
+            let policy = KeyPolicyConfig {
+                overrides: HashMap::from([(identity.to_owned(), KeyAction::RecordAndDisplayBreak)]),
+                ..KeyPolicyConfig::default()
+            };
+
+            let trace = process_captured_input_detailed(
+                &mut connection,
+                &mut guard,
+                &excluded,
+                &KeyMapping::default(),
+                &policy,
+                input,
+                Instant::now(),
+                None,
+            )
+            .expect("unmodified non-text decision");
+            assert_eq!(trace.outcome, ProcessOutcome::Recorded, "{identity}");
+            assert_eq!(trace.shortcut.as_deref(), Some(identity));
+            let count: i64 = connection
+                .query_row("SELECT COUNT(*) FROM shortcut_events", [], |row| row.get(0))
+                .expect("event count");
+            assert_eq!(count, 1, "{identity}");
+        }
     }
 
     #[test]
