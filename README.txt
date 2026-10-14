@@ -29,7 +29,7 @@ v0.1.4 highlights:
 - Overlay退避clickは修飾付きでも内部記録せず、click-throughを維持。
 
 Build:
-  pwsh -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -SkipInstaller
+  pwsh -ExecutionPolicy Bypass -File .\dev\scripts\build-release-ShortcutKeyCounter-all.ps1
 
 Data:
   %LOCALAPPDATA%\ShortcutKeyCounter\ShortcutKeyCounter.db

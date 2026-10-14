@@ -1,5 +1,5 @@
 param(
-    [string]$ExePath = (Join-Path $PSScriptRoot '..\target\release\ShortcutKeyCounter.exe'),
+    [string]$ExePath = (Join-Path $PSScriptRoot '..\..\target\release\ShortcutKeyCounter.exe'),
     [int]$TimeoutSeconds = 20
 )
 $ErrorActionPreference = 'Stop'

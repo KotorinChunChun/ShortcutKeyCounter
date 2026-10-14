@@ -4,7 +4,7 @@
 
 `apps/shortcut-key-counter/src/tauri_commands.rs` に `&db_lock(&state)?` が残っていないことを確認します。DBを使うTauri commandは `let db = db_lock(&state)?;` でguardを束縛してから `command_api` へ `&db` を渡します。
 
-`scripts/build-release.ps1` はこの禁止パターンを自動検査し、その後 `cargo check --workspace --all-targets --all-features` を実行します。E0308（`expected Connection, found MutexGuard`）が再発した場合はrelease処理を中断してください。
+`dev/scripts/test-release-ShortcutKeyCounter-all.ps1` はこの禁止パターンを自動検査し、その後 `cargo check --workspace --all-targets --all-features` を実行します。E0308（`expected Connection, found MutexGuard`）が再発した場合は検証を中断してください。
 
 
 ## Build prerequisites
@@ -20,10 +20,10 @@
 
 ```powershell
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\build-release.ps1
+pwsh -ExecutionPolicy Bypass -File .\dev\scripts\test-release-ShortcutKeyCounter-all.ps1
 ```
 
-Inno Setupが未導入の場合はZIPまで作成されます。
+この処理は自動品質検証とReleaseビルドまでを行います。ZIP生成と外部公開は別工程です。
 
 ## Mandatory acceptance
 
@@ -60,7 +60,7 @@ The main UI is created on normal manual launch, or lazily after a `-hide` logon 
 After a release build, run:
 
 ```powershell
-.\scripts\test-webview-lifecycle.ps1
+pwsh -ExecutionPolicy Bypass -File .\dev\scripts\test-exe-ShortcutKeyCounter-webview-lifecycle.ps1
 ```
 
 PASS requires all of the following:
@@ -108,7 +108,7 @@ This test distinguishes **destroying the WebView** from merely hiding the window
 
 ### Build / source gate
 
-`scripts/build-release.ps1` が以下をPASSすること。
+`dev/scripts/test-release-ShortcutKeyCounter-all.ps1` が以下をPASSすること。
 
 - Overlay default stable display duration is `1840ms`; IN/OUT animation timing remains independently configurable
 - maximum stack = 3

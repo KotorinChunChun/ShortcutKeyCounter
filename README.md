@@ -139,9 +139,9 @@ Security Gateは、オーバーレイ表示、リアルタイムログ、DB記�
 - `crates/shortcut-storage`: SQLite、Repository、統計、Migration
 - `crates/shortcut-windows`: Win32 Hook、Foreground、Overlay、Elevation
 - `migrations`: SQLite Migration
-- `scripts`: ビルド、テスト、パッケージ処理
+- `dev/scripts`: ビルド、テスト、ローカルパッケージ処理
 - `docs`: 利用者・ビルド担当者向け文書
-- `dev`: 現行仕様、実装記録、テンプレート、旧版履歴
+- `dev`: 現行仕様、実装記録、配布手順、旧版履歴
 - `release/Publish`: 配布成果物のローカル控え（Git追跡対象外）
 
 ### 必要な環境
@@ -153,13 +153,19 @@ Security Gateは、オーバーレイ表示、リアルタイムログ、DB記�
 
 ### ビルド
 
-ZIPまで生成する場合:
+Releaseビルドだけを行う場合:
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File .\scripts\build-release.ps1 -SkipInstaller
+pwsh -ExecutionPolicy Bypass -File .\dev\scripts\build-release-ShortcutKeyCounter-all.ps1
 ```
 
-生成したZIPは `release/Publish/` に保存されます。
+自動品質検証をまとめて行う場合:
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File .\dev\scripts\test-release-ShortcutKeyCounter-all.ps1
+```
+
+ZIP生成はビルドと分離されており、既存のRelease成果物に対して `package-ShortcutKeyCounter-zip.ps1` を実行します。
 
 個別に確認する場合:
 
@@ -171,12 +177,14 @@ cargo test --workspace --all-features
 pwsh -ExecutionPolicy Bypass -File .\apps\shortcut-key-counter\scripts\build-ui.ps1
 ```
 
-詳しくは[Windowsビルド・受入手順](docs/windows-build-and-acceptance.md)を参照してください。
+詳しくは[開発者ガイド](docs/DEVELOPERS_GUIDE.md)と[ビルド・検証コマンド](docs/BUILD_COMMANDS.md)を参照してください。
 
 ## ドキュメント
 
 - [ユーザーガイド](docs/users-guide.md)
 - [利用者向けドキュメント一覧](docs/README.md)
+- [開発者ガイド](docs/DEVELOPERS_GUIDE.md)
+- [ビルド・検証コマンド](docs/BUILD_COMMANDS.md)
 - [Windowsビルド・受入手順](docs/windows-build-and-acceptance.md)
 - [開発資料](dev/README.md)
 

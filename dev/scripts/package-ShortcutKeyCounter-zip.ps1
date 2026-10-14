@@ -1,11 +1,11 @@
 param(
     [string]$Version = '0.1.4',
-    [string]$TargetDir = (Join-Path $PSScriptRoot '..\target\release'),
-    [string]$OutputDir = (Join-Path $PSScriptRoot '..\release\Publish'),
-    [string]$StageRoot = (Join-Path $PSScriptRoot '..\release\staging')
+    [string]$TargetDir = (Join-Path $PSScriptRoot '..\..\target\release'),
+    [string]$OutputDir = (Join-Path $PSScriptRoot '..\..\release\Publish'),
+    [string]$StageRoot = (Join-Path $PSScriptRoot '..\..\release\staging')
 )
 $ErrorActionPreference = 'Stop'
-$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $ReleaseRoot = [IO.Path]::GetFullPath((Join-Path $Root 'release'))
 
 function Resolve-ReleasePath {

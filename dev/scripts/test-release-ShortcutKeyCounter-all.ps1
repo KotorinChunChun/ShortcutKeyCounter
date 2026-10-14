@@ -1,10 +1,9 @@
 ﻿param(
-    [switch]$SkipInstaller,
     [switch]$RunWebViewLifecycleTest,
     [string]$CargoTargetDirectory
 )
 $ErrorActionPreference = 'Stop'
-$Root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+$Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 Set-Location $Root
 
 if ($CargoTargetDirectory) {
@@ -252,21 +251,9 @@ if ($LASTEXITCODE -ne 0) { throw 'cargo test failed.' }
 & cargo build --release -p shortcut-key-counter -p shortcut-key-capture
 if ($LASTEXITCODE -ne 0) { throw 'cargo release build failed.' }
 
-& pwsh -ExecutionPolicy Bypass -File '.\scripts\package-zip.ps1' -TargetDir $ReleaseTargetDirectory
-if ($LASTEXITCODE -ne 0) { throw 'ZIP packaging failed.' }
-
 if ($RunWebViewLifecycleTest) {
-    & pwsh -ExecutionPolicy Bypass -File '.\scripts\test-webview-lifecycle.ps1'
+    & pwsh -ExecutionPolicy Bypass -File '.\dev\scripts\test-exe-ShortcutKeyCounter-webview-lifecycle.ps1' -ExePath (Join-Path $ReleaseTargetDirectory 'ShortcutKeyCounter.exe')
     if ($LASTEXITCODE -ne 0) { throw 'WebView lifecycle test failed.' }
 }
 
-if (-not $SkipInstaller) {
-    $iscc = Get-Command ISCC.exe -ErrorAction SilentlyContinue
-    if ($iscc) {
-        & $iscc.Source '.\installer\ShortcutKeyCounter.iss'
-        if ($LASTEXITCODE -ne 0) { throw 'Inno Setup build failed.' }
-    } else {
-        Write-Warning 'ISCC.exe が見つからないためInno Setup installer作成のみスキップしました。'
-    }
-}
-Write-Host '[ShortcutKeyCounter] release build completed.'
+Write-Host '[ShortcutKeyCounter] release quality gate completed.'

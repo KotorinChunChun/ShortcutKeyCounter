@@ -1,6 +1,6 @@
 # ドキュメント運用規則
 
-更新日: 2026-08-20
+更新日: 2026-08-30
 
 本書は、ShortcutKeyCounter の文書配置、ファイル名、版管理の基準を定める。本文は日本語で記述し、ファイル名とリンク先はASCII文字で統一する。
 
@@ -11,20 +11,22 @@
 | プロジェクトルート | 利用者が最初に読む資料 | `README.md` |
 | プロジェクトルート | 配布ZIPへ同梱するプレーンテキスト | `README.txt` |
 | `docs/` | 利用者・ビルド担当者向けの版に依存しない手順 | `docs/<topic>.md` |
-| `dev/` | 現行版の要求、実装計画、進捗 | `vX.Y.Z-req.md` / `vX.Y.Z-imp.md` / `vX.Y.Z-task.md` |
-| `dev/` | プロジェクト共通の開発規約 | `project-rules.md` |
-| `dev/templates/` | 共通開発・リリーステンプレート | 原本のファイル名を維持する |
+| `dev/` | 現行版および明示的に承認された次期版の要求、実装計画、進捗 | `vX.Y.Z-req.md` / `vX.Y.Z-imp.md` / `vX.Y.Z-task.md` |
+| プロジェクトルート | 必須ルール・配置・目的別目録 | `AGENTS.md` |
+| `dev/` | 未確定の長期計画・アイデア | `PLAN_IDEAS.md` |
+| `dev/scripts/` | ビルド・起動・検証・配布の運用スクリプト | 処理内容に応じた規定名 |
+| `dev/private/` / `dev/temp/` | 非公開資料 / プロジェクト外の一時制作物 | Git・目録・通常調査の対象外 |
 | `dev/history/vX.Y.Z/` | 完了済み版の要求・実装・検証・報告 | 版付きファイル一式 |
 | `dev/history/vX.Y.Z/tasks/` | 旧版の細分化タスク | `NN-<topic>.md` |
 | `release/Publish/` | GitHub Releasesへ公開した配布成果物のローカル控え | Git追跡対象外 |
 
-版付き資料を `docs/` や `dev/` 直下へ重複配置しない。完了した版は、次の版へ進む時点で `dev/history/vX.Y.Z/` へ移動する。
+版付き資料を `docs/` や複数の場所へ重複配置しない。完了した版は、次の版へ進む時点で `dev/history/vX.Y.Z/` へ移動する。次期版の資料を先行作成する場合も、実装着手条件をreqとimpへ明記する。
 
 ## 2. ファイル名
 
 ### 2.1 共通規則
 
-- 固定名の `README.md` / `README.txt` / `LICENSE.txt` と `dev/templates/` の原本以外は小文字ASCIIのkebab-caseを使う。
+- 固定名の `AGENTS.md` / `README.md` / `README.txt` / `LICENSE.txt` / `PLAN_IDEAS.md` / `RELEASE_RULE.md` / `DEVELOPERS_GUIDE.md` / `BUILD_COMMANDS.md` 以外は原則として小文字ASCIIのkebab-caseを使う。運用スクリプトは `AGENTS.md` の命名規則を優先する。
 - 空白、日本語、全角記号、`#Uxxxx` のようなUnicodeエスケープ風表記、用途不明な略称は使わない。
 - 日付は `YYYYMMDD` とし、版と組み合わせる場合は末尾に置く。
 - ファイル名だけで役割が分かるようにし、アプリ名や版をディレクトリ名と重複させない。
@@ -75,13 +77,16 @@ dev/history/v0.1.2/tasks/file-manifest.md
 
 - Markdownのリンクはリンク元からの相対パスにする。
 - ファイルを移動・改名したら、旧パスを `rg` で検索し、現行文書の参照をすべて更新する。
-- 実装中の版だけを `dev/` 直下に置く。リリース後に次の版へ進んだら、旧版一式を `dev/history/` へ移動する。
+- 原則として実装中の版だけを `dev/` 直下に置く。明示的に承認された次期版のreq/imp/task/designは先行配置できるが、現行版のリリースと履歴移動が完了するまで実装しない。
+- リリース後に次の版へ進んだら、旧版一式を `dev/history/` へ移動する。
 - 本プロジェクトでは、製品のリリース版はソースのバージョン表記に従い、要求作業中の次版は開発中として `dev/<version>-req.md` に記録する。
 
 ## 5. 現在の配置
 
 - 基準リリース: v0.1.4
 - 現行要求: [`v0.1.5-req.md`](./v0.1.5-req.md)
-- 共通規約: [`project-rules.md`](./project-rules.md)
+- 次期版計画: [`v0.2.0-req.md`](./v0.2.0-req.md) / [`v0.2.0-imp.md`](./v0.2.0-imp.md) / [`v0.2.0-task.md`](./v0.2.0-task.md)
+- 将来候補: [`PLAN_IDEAS.md`](./PLAN_IDEAS.md)
+- 必須ルール: [`../AGENTS.md`](../AGENTS.md)
 - 利用者向け手順: [`../docs/README.md`](../docs/README.md)
 - 完了版: [`history/`](./history/)

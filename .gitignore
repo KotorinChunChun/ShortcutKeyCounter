@@ -8,6 +8,8 @@
 /.secrets/
 /secrets.json
 /release/
+/dev/private/
+/dev/temp/
 /dist/
 /publish/
 *.log

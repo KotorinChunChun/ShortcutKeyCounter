@@ -5,6 +5,8 @@ ShortcutKeyCounterは、Windowsのバックグラウンドでショートカッ�
 ## 手順
 
 - [ユーザーガイド](./users-guide.md)
+- [開発者ガイド](./DEVELOPERS_GUIDE.md)
+- [ビルド・検証コマンド](./BUILD_COMMANDS.md)
 - [Windowsビルド・受入手順](./windows-build-and-acceptance.md)
 
 ユーザーガイド用の画像は [`images/users-guide/`](./images/users-guide/) に保存する。現在の撮影状況と撮影時の注意事項は、同フォルダーのREADMEを参照する。
@@ -14,4 +16,4 @@ ShortcutKeyCounterは、Windowsのバックグラウンドでショートカッ�
 - [プロジェクト概要](../README.md)
 - [配布用テキストREADME](../README.txt)
 
-版ごとの要求・実装・テスト記録は、利用者向け手順とは分離して [`dev/history/`](../dev/history/) に保存する。開発中の要求は [`dev/README.md`](../dev/README.md) から参照する。
+開発計画、設計、版ごとの要求・実装・テスト記録は利用者向け手順と分離し、[`dev/README.md`](../dev/README.md)から参照する。
