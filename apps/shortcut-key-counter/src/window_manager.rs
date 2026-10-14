@@ -98,7 +98,7 @@ pub fn show_main_window(app: &AppHandle<Wry>, page: Option<&str>) -> tauri::Resu
 
     let mut builder =
         WebviewWindowBuilder::new(app, MAIN_WINDOW_LABEL, WebviewUrl::App("index.html".into()))
-            .title("ShortcutKeyCounter")
+            .title(crate::window_title::WindowTitle::create(None))
             .inner_size(1220.0, 800.0)
             .min_inner_size(940.0, 640.0)
             .resizable(true)

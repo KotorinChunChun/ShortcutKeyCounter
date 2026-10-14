@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "shortcut-key-counter",
+  "name": "ShortcutKeyCounter",
+  "version": "0.1.4",
+  "summary": "ショートカットキーの使用回数を集計し、入力を画面に表示する",
+  "category": "入力・作業分析",
+  "executable": "target/debug/ShortcutKeyCounter.exe",
+  "installedExecutable": "ShortcutKeyCounter.exe",
+  "appId": "KotorinToys.ShortcutKeyCounter",
+  "manual": "README.md",
+  "readme": "README.md",
+  "shortcuts": "config/shortcuts.json",
+  "distributionStatus": "unpublished",
+  "supportedEnvironment": "windows11-x64",
+  "investigationStatus": "confirmed",
+  "icon": "apps/shortcut-key-counter/icons/icon.ico",
+  "capabilities": ["status", "show", "stop", "silent-start"],
+  "runtimes": [
+    { "id": "webview2", "name": "Microsoft Edge WebView2 Runtime", "kind": "external", "guide": "画面表示にはWebView2 Runtimeが必要です。Windows 11で利用できます。" },
+    { "id": "capture-helper", "name": "ShortcutKeyCaptureヘルパー", "kind": "file", "path": "ShortcutKeyCapture.exe", "optional": true, "feature": "高権限アプリの入力取得" }
+  ]
+}

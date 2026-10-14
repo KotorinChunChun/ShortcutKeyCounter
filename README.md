@@ -58,6 +58,8 @@ Keyvizのように、入力したキーを画面上へポップアップ表示�
 
 ## ダウンロード
 
+開発版の本体連携は[KotorinToysからの管理](docs/kotorintoys-integration.md)を参照してください。公開済みZIPの管理窓口対応を意味するものではありません。
+
 現在は暫定版をGitHubで公開しています。
 
 1. [GitHub Releases](https://github.com/KotorinChunChun/ShortcutKeyCounter/releases)から最新の `ShortcutKeyCounter-vX.Y.Z-win-x64.zip` をダウンロードします。

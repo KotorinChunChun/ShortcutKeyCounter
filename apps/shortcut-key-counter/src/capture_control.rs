@@ -72,14 +72,19 @@ pub struct CaptureController {
 impl CaptureController {
     /// 起動時に両hookを登録できた場合だけ、計測ONで返す。
     pub fn start(queue: CaptureQueue) -> Result<Self, CaptureControlError> {
-        let mut controller = Self {
+        let mut controller = Self::paused(queue);
+        controller.start_capture()?;
+        Ok(controller)
+    }
+
+    /// 管理連携の隔離テスト用。入力Hookを登録しない。
+    pub fn paused(queue: CaptureQueue) -> Self {
+        Self {
             queue,
             state: CaptureState::disabled(),
             keyboard_hook: None,
             mouse_hook: None,
-        };
-        controller.start_capture()?;
-        Ok(controller)
+        }
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -208,6 +213,14 @@ mod tests {
             .recover_capture_after_resume()
             .expect("disabled capture recovery");
         assert!(!controller.is_enabled());
+    }
+
+    #[test]
+    fn management_test_controller_does_not_register_input_hooks() {
+        let controller = CaptureController::paused(CaptureQueue::new());
+        assert!(!controller.is_enabled());
+        assert!(controller.keyboard_hook.is_none());
+        assert!(controller.mouse_hook.is_none());
     }
 
     #[test]

@@ -20,7 +20,7 @@ const HIDE_ARGUMENT: &str = "-hide";
 fn hide_on_start(arguments: impl IntoIterator<Item = String>) -> bool {
     arguments
         .into_iter()
-        .any(|argument| argument.eq_ignore_ascii_case(HIDE_ARGUMENT))
+        .any(|argument| argument.eq_ignore_ascii_case(HIDE_ARGUMENT) || argument == "--startup")
 }
 
 fn main() {
@@ -34,6 +34,8 @@ fn main() {
     };
     let activation_event = instance_guard.activation_event_value();
     let start_hidden = hide_on_start(std::env::args().skip(1));
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let origin = shortcut_key_counter::management::launch_origin(&arguments).to_owned();
 
     let state = AppState::initialize().expect("ShortcutKeyCounter backend initialization failed");
 
@@ -41,6 +43,7 @@ fn main() {
         .manage(state)
         .setup(move |app| {
             setup_tray(app)?;
+            shortcut_key_counter::management::start(app.handle().clone(), origin.clone())?;
 
             // Capture workerがリアルタイムログへ1件追加するたびにWebViewへ通知する。
             // UIが閉じている間もログ自体はring bufferへ蓄積される。
@@ -234,6 +237,7 @@ mod tests {
     fn only_hide_argument_suppresses_initial_ui() {
         assert!(hide_on_start(["-hide".to_owned()]));
         assert!(hide_on_start(["-HIDE".to_owned()]));
+        assert!(hide_on_start(["--startup".to_owned()]));
         assert!(!hide_on_start(std::iter::empty::<String>()));
         assert!(!hide_on_start(["--background".to_owned()]));
     }

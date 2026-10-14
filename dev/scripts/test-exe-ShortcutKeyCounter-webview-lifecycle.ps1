@@ -28,7 +28,7 @@ function Get-MainWindow([int]$Pid) {
         if ($windowPid -eq $Pid -and [WindowProbe]::IsWindowVisible($h)) {
             $sb = New-Object System.Text.StringBuilder 256
             [void][WindowProbe]::GetWindowText($h, $sb, $sb.Capacity)
-            if ($sb.ToString() -eq 'ShortcutKeyCounter') { $script:__found = $h; return $false }
+            if ($sb.ToString() -match '^ShortcutKeyCounter - ver \d+\.\d+\.\d+$') { $script:__found = $h; return $false }
         }
         return $true
     }, [IntPtr]::Zero) | Out-Null

@@ -83,6 +83,23 @@ pub struct CaptureRuntime {
 impl CaptureRuntime {
     /// DB初期化完了後にworker、local hooks、power monitorを順に起動する。
     pub fn start() -> Result<(Self, AppPaths), RuntimeError> {
+        #[cfg(debug_assertions)]
+        if let Some(root) = std::env::var_os("SHORTCUT_KEY_COUNTER_TEST_LOCALAPPDATA") {
+            let root = std::path::PathBuf::from(root);
+            if !root.is_absolute() {
+                return Err(StartupError::Paths(
+                    shortcut_windows::known_folders::KnownFoldersError::DirectoryCreation(
+                        "隔離テストの保存先には絶対パスが必要です".into(),
+                    ),
+                )
+                .into());
+            }
+            let paths = AppPaths::from_local_app_data(root);
+            let context = crate::startup::initialize_at(paths.clone())?;
+            crate::settings::set_overlay_enabled(&context.connection, false)?;
+            let runtime = Self::start_from_context(context)?;
+            return Ok((runtime, paths));
+        }
         let context = initialize()?;
         let paths = context.paths.clone();
         let executable_path = std::env::current_exe().map_err(RuntimeError::ExecutablePath)?;
@@ -162,7 +179,16 @@ impl CaptureRuntime {
             Arc::clone(&security_status),
             key_search.clone(),
         )?;
-        let controller = match CaptureController::start(queue.clone()) {
+        // Debugの明示的な隔離試験では本番保存先、Run同期、入力Hookを使用しない。
+        let isolated_test = cfg!(debug_assertions)
+            && std::env::var_os("SHORTCUT_KEY_COUNTER_TEST_LOCALAPPDATA").is_some();
+        let capture = if isolated_test {
+            capture_gate.store(false, std::sync::atomic::Ordering::Release);
+            Ok(CaptureController::paused(queue.clone()))
+        } else {
+            CaptureController::start(queue.clone())
+        };
+        let controller = match capture {
             Ok(controller) => controller,
             Err(error) => {
                 drop(worker);

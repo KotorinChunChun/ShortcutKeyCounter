@@ -14,6 +14,7 @@ pub mod user_activity;
 
 pub mod shell_open;
 
+pub mod management_pipe;
 pub mod single_instance;
 
 pub mod overlay_window;
