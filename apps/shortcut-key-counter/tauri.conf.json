@@ -13,6 +13,15 @@
     "withGlobalTauri": true,
     "windows": [],
     "security": {
+      "capabilities": [
+        {
+          "identifier": "main-event-subscriptions",
+          "description": "ローカルmain画面の状態通知購読と解除だけを許可する",
+          "windows": ["main"],
+          "local": true,
+          "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+        }
+      ],
       "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }
   },

@@ -6,6 +6,7 @@
 - `--launch-origin host_manual|via_kotorintoys|direct_task`：管理用の起動経路。不正・欠落は`standalone`とする。
 - `KotorinToys.<利用者SID>.shortcut-key-counter`：利用者専用ACL・同一Windowsセッション・ローカル接続限定の管理窓口。改行区切りのプロトコル2で`status`、`show`、`stop`を提供する。変更操作には現在の`expectedPid`が必要。
 - 管理応答に入力、アプリ名、ウィンドウ名、統計、設定内容を含めない。入力保護・保存先・単独起動・トレイの終了操作は維持する。
+- Tauriのローカル`main`画面に状態通知の購読・解除だけを許可する。イベント送信・外部サイト・ファイル操作等の権限は追加しない。
 - メインタイトルは`ShortcutKeyCounter - ver X.Y.Z`で、`WindowTitle::create`がCargo製品版から生成する。
 
 現在公開しているポータブルZIPは本体対応Innoインストーラーではありません。本体からの自動ダウンロード・正式導入・更新は今回対応していません。既存のポータブル版からのデータ移動・削除や、Windows自動起動設定の変更も行いません。

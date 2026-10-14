@@ -159,6 +159,23 @@ fn handle(
 mod tests {
     use super::*;
     #[test]
+    fn main_window_has_only_local_event_subscription_permissions() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let capabilities = config["app"]["security"]["capabilities"]
+            .as_array()
+            .unwrap();
+        assert_eq!(capabilities.len(), 1);
+        let capability = &capabilities[0];
+        assert_eq!(capability["windows"], serde_json::json!(["main"]));
+        assert_eq!(capability["local"], true);
+        assert!(capability.get("remote").is_none());
+        assert_eq!(
+            capability["permissions"],
+            serde_json::json!(["core:event:allow-listen", "core:event:allow-unlisten"])
+        );
+    }
+    #[test]
     fn status_and_json_requests_are_compatible() {
         assert_eq!(parse_request("status").unwrap().command, "status");
         let req =
