@@ -41,7 +41,7 @@ pwsh -ExecutionPolicy Bypass -File .\dev\scripts\test-exe-ShortcutKeyCounter-web
 ## ZIP 生成
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File .\dev\scripts\package-ShortcutKeyCounter-zip.ps1 -Version 0.1.4
+pwsh -ExecutionPolicy Bypass -File .\dev\scripts\package-ShortcutKeyCounter-zip.ps1 -Version 0.1.5
 ```
 
-既存の Release exe から `release/Publish/` にZIPを生成します。ビルドや外部公開は行いません。
+既存のRelease exeから`dev/history/vX.Y.Z/logs/package/Publish/`にZIPを生成します。実行ごとの出力先は対象版のlogs配下へ`-OutputDir`と`-StageRoot`で指定できます。third-partyの表示文・MPL原本も同梱し、古い台帳・原本改変・必須表示欠落を拒否します。ビルドと外部公開は別工程です。

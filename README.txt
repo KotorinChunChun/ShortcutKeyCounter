@@ -1,4 +1,4 @@
-ShortcutKeyCounter v0.1.4
+ShortcutKeyCounter v0.1.5
 ========================
 
 Windowsのバックグラウンドに常駐し、入力されたショートカットキーをキー別、アプリ別、時間軸でローカル集計する Rust + Tauri 2 アプリです。
@@ -8,7 +8,7 @@ Download:
   https://github.com/KotorinChunChun/ShortcutKeyCounter/releases
 
 User Guide:
-  https://github.com/KotorinChunChun/ShortcutKeyCounter/blob/feature/v0.1.5/docs/users-guide.md
+  https://github.com/KotorinChunChun/ShortcutKeyCounter/blob/v0.1.5/docs/users-guide.md
 
 Start:
   1. ZIPを展開します。
@@ -16,7 +16,13 @@ Start:
   3. ShortcutKeyCounter.exeを実行します。
   4. 画面を閉じても通知領域で計測を継続します。完全終了は通知領域メニューの「終了」を選びます。
 
-v0.1.4 highlights:
+v0.1.5 highlights:
+- Foreground Window全体のパスワード保護とオーバーレイの自動配置を改善。
+- キーマッピング編集中の試用、未保存警告、保存・取消を追加。
+- 時間帯別ダッシュボード、CSV出力設定、外観プレビュー・初期化を追加。
+- KotorinToysの管理連携と第三者ライセンス・MPL原本の同梱に対応。
+
+継続する主な機能:
 - 修飾なしの英字・数字・記号・テンキーは永続記録禁止。Fキー・システムキー・mouse・wheelは明示設定時だけ記録可。
 - Security GateはOverlay/Realtime Log/DBより前でFail Closed。
 - Overlay設定combo/固定monitorの操作不具合を修正。

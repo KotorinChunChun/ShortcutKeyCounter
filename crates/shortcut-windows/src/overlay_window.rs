@@ -743,7 +743,12 @@ impl DibSurface {
     fn copy_from_rgba(&mut self, rgba: &[u8]) {
         let len = self.width as usize * self.height as usize * 4;
         let destination = unsafe { std::slice::from_raw_parts_mut(self.bits, len) };
-        for (src, dst) in rgba.chunks_exact(4).zip(destination.chunks_exact_mut(4)) {
+        for (src, dst) in rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .zip(destination.as_chunks_mut::<4>().0.iter_mut())
+        {
             // DIB32 is BGRA while tiny-skia is premultiplied RGBA.
             dst[0] = src[2];
             dst[1] = src[1];

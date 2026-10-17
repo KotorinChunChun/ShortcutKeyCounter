@@ -379,7 +379,7 @@ mod tests {
             serde_json::to_vec_pretty(&values.labels)
                 .unwrap()
                 .into_iter()
-                .chain([b'\n'])
+                .chain(*b"\n")
                 .collect::<Vec<_>>()
         );
         let _ = fs::remove_dir_all(paths.theme_json.parent().unwrap());

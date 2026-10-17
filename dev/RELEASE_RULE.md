@@ -31,13 +31,13 @@ pwsh -ExecutionPolicy Bypass -File .\dev\scripts\build-release-ShortcutKeyCounte
 `Cargo.toml` の版と同じ値を明示する。
 
 ```powershell
-pwsh -ExecutionPolicy Bypass -File .\dev\scripts\package-ShortcutKeyCounter-zip.ps1 -Version 0.1.4
+pwsh -ExecutionPolicy Bypass -File .\dev\scripts\package-ShortcutKeyCounter-zip.ps1 -Version 0.1.5
 ```
 
-入力は `target/release/ShortcutKeyCounter.exe` と `ShortcutKeyCapture.exe`、出力は `release/Publish/ShortcutKeyCounter-vX.Y.Z-win-x64.zip` である。ZIP に DB、設定、秘密鍵を含めない。
+入力は `target/release/ShortcutKeyCounter.exe` と `ShortcutKeyCapture.exe`、既定出力は `dev/history/vX.Y.Z/logs/package/Publish/ShortcutKeyCounter-vX.Y.Z-win-x64.zip` である。実行ごとの`-OutputDir`と`-StageRoot`も対象版のlogs配下へ指定する。ZIPにDB・設定・秘密鍵を含めず、third-partyの表示文とMPL原本を同梱する。Cargo.lockの不一致・原本改変・必須表示欠落は拒否する。
 
 ## 3. 受入と外部公開
 
-ZIP の展開内容、SHA-256、`docs/windows-build-and-acceptance.md` の必須項目を確認する。GitHub Releases へのタグ作成、Release 本文作成、ZIP と SHA-256 のアップロードは手動工程であり、本ルール適用時には実行しない。
+ZIPの展開内容、SHA-256、`docs/windows-build-and-acceptance.md`の項目を確認する。ユーザーがリリースを指示した場合は、検証したソースをコミット・pushし、そのコミットに新しいタグを付け、GitHub ReleasesへZIPとSHA256SUMS.txtを公開する。既存タグ・assetを上書きしない。未確認の実機受入項目は版別報告とRelease本文に記載する。
 
 インストーラの定義ファイルは現在のリポジトリに存在しないため、インストーラ生成は現行の配布工程に含めない。

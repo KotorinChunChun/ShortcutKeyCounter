@@ -1,12 +1,14 @@
 param(
-    [string]$Version = '0.1.4',
+    [string]$Version = '0.1.5',
     [string]$TargetDir = (Join-Path $PSScriptRoot '..\..\target\release'),
-    [string]$OutputDir = (Join-Path $PSScriptRoot '..\..\release\Publish'),
-    [string]$StageRoot = (Join-Path $PSScriptRoot '..\..\release\staging')
+    [string]$OutputDir = (Join-Path $PSScriptRoot "../../dev/history/v$Version/logs/package/Publish"),
+    [string]$StageRoot = (Join-Path $PSScriptRoot "../../dev/history/v$Version/logs/package/staging")
 )
 $ErrorActionPreference = 'Stop'
 $Root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw '版はX.Y.Z形式で指定してください。' }
 $ReleaseRoot = [IO.Path]::GetFullPath((Join-Path $Root 'release'))
+$VersionLogsRoot = [IO.Path]::GetFullPath((Join-Path $Root "dev/history/v$Version/logs"))
 
 function Resolve-ReleasePath {
     param(
@@ -15,9 +17,12 @@ function Resolve-ReleasePath {
     )
 
     $fullPath = [IO.Path]::GetFullPath($Path)
-    $releasePrefix = $ReleaseRoot.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
-    if (-not $fullPath.StartsWith($releasePrefix, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "配布物の出力先は release ディレクトリ配下を指定してください: $fullPath"
+    $allowed = @($ReleaseRoot, $VersionLogsRoot) | Where-Object {
+        $prefix = $_.TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+        $fullPath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+    }
+    if (-not $allowed) {
+        throw "配布物の出力先は対象版のlogsまたはrelease配下を指定してください: $fullPath"
     }
     return $fullPath
 }
@@ -35,7 +40,7 @@ $Manifest = Get-Content (Join-Path $ThirdParty 'manifest.json') -Raw | ConvertFr
 if ((Get-FileHash (Join-Path $Root 'Cargo.lock') -Algorithm SHA256).Hash -ne $Manifest.cargoLockSha256) {
     throw 'Cargo.lock更新後に第三者ライセンス台帳を再生成してください。'
 }
-foreach ($required in @('THIRD-PARTY-NOTICES.txt', 'ASSET-PROVENANCE.md', 'webview2-sdk/LICENSE.txt', 'webview2-sdk/NOTICE.txt')) {
+foreach ($required in @('THIRD-PARTY-NOTICES.txt', 'ASSET-PROVENANCE.md', 'webview2-sdk/LICENSE.txt', 'webview2-sdk/NOTICE.txt', 'rust-standard-library/COPYRIGHT-library.html')) {
     if (-not (Test-Path (Join-Path $ThirdParty $required))) { throw "ライセンス表示がありません: $required" }
 }
 foreach ($package in $Manifest.packages) {

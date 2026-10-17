@@ -9,8 +9,8 @@ foreach ($file in @('Cargo.lock','LICENSE.txt','README.txt')) { Copy-Item "$Root
 # 起動しないダミーで、パッケージ処理のみを検証する。製品ビルドの証拠ではない。
 Set-Content "$Fixture/target/release/ShortcutKeyCounter.exe" '配布試験用ダミー・実行不可'
 Set-Content "$Fixture/target/release/ShortcutKeyCapture.exe" '配布試験用ダミー・実行不可'
-& "$Fixture/dev/scripts/package-ShortcutKeyCounter-zip.ps1"
-$zip = [IO.Compression.ZipFile]::OpenRead("$Fixture/release/Publish/ShortcutKeyCounter-v0.1.4-win-x64.zip")
+& "$Fixture/dev/scripts/package-ShortcutKeyCounter-zip.ps1" -OutputDir "$Fixture/release/Publish" -StageRoot "$Fixture/release/staging"
+$zip = [IO.Compression.ZipFile]::OpenRead("$Fixture/release/Publish/ShortcutKeyCounter-v0.1.5-win-x64.zip")
 try {
     $entries = @($zip.Entries.FullName.Replace('\','/'))
     foreach ($required in @('third-party/THIRD-PARTY-NOTICES.txt','third-party/ASSET-PROVENANCE.md','third-party/webview2-sdk/NOTICE.txt')) {

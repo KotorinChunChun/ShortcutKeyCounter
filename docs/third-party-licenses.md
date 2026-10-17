@@ -6,6 +6,7 @@
 - [版・SPDX式・出典・ハッシュの台帳](../third-party/manifest.json)
 - [画像・SVGの出典確認](../third-party/ASSET-PROVENANCE.md)
 - [WebView2 SDKのライセンス](../third-party/webview2-sdk/LICENSE.txt)と[NOTICE](../third-party/webview2-sdk/NOTICE.txt)
+- [Rust標準ライブラリの表示文](../third-party/rust-standard-library/COPYRIGHT-library.html)と[使用版](../third-party/rust-standard-library/SOURCES.md)
 
 対象はCargo.lockから解決したWindows x64の依存（ビルド用・開発用も保守的に含む）。MIT、Apache-2.0、BSD、Zlib、Unicode等の本文・著作権表示を保持する。選択式は上流の式をそのまま掲載し、ANDで要求される表示も含める。上流crateに本文がないものは、crateの`.cargo_vcs_info.json`が示す固定コミットから取得した本文と出典を`third-party/upstream/`に保存する。
 

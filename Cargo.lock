@@ -3102,7 +3102,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "shortcut-common"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "serde",
  "serde_json",
@@ -3110,7 +3110,7 @@ dependencies = [
 
 [[package]]
 name = "shortcut-core"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chrono",
  "serde",
@@ -3120,7 +3120,7 @@ dependencies = [
 
 [[package]]
 name = "shortcut-key-capture"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -3131,7 +3131,7 @@ dependencies = [
 
 [[package]]
 name = "shortcut-key-counter"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chrono",
  "crossbeam-channel",
@@ -3152,7 +3152,7 @@ dependencies = [
 
 [[package]]
 name = "shortcut-storage"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chrono",
  "rusqlite",
@@ -3164,7 +3164,7 @@ dependencies = [
 
 [[package]]
 name = "shortcut-windows"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chrono",
  "crossbeam-channel",

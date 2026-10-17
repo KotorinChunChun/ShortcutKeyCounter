@@ -235,20 +235,15 @@ if ($overlayModuleText -match 'WebviewWindow|WebView2|WebviewWindowBuilder') {
     throw 'v0.1.1 Overlay subsystemへWebView依存が混入しています。Native Win32 Overlayを維持してください。'
 }
 
-& cargo generate-lockfile
-if ($LASTEXITCODE -ne 0) { throw 'cargo generate-lockfile failed.' }
-
-& cargo fmt --all
-if ($LASTEXITCODE -ne 0) { throw 'cargo fmt failed.' }
 & cargo fmt --all -- --check
 if ($LASTEXITCODE -ne 0) { throw 'cargo fmt check failed.' }
-& cargo check --workspace --all-targets --all-features
+& cargo check --locked --workspace --all-targets --all-features
 if ($LASTEXITCODE -ne 0) { throw 'cargo check failed.' }
-& cargo clippy --workspace --all-targets --all-features -- -D warnings
+& cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
 if ($LASTEXITCODE -ne 0) { throw 'cargo clippy failed.' }
-& cargo test --workspace --all-features
+& cargo test --locked --workspace --all-features
 if ($LASTEXITCODE -ne 0) { throw 'cargo test failed.' }
-& cargo build --release -p shortcut-key-counter -p shortcut-key-capture
+& cargo build --locked --release -p shortcut-key-counter -p shortcut-key-capture
 if ($LASTEXITCODE -ne 0) { throw 'cargo release build failed.' }
 
 if ($RunWebViewLifecycleTest) {

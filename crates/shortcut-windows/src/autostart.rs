@@ -96,8 +96,10 @@ pub fn read_autostart_command() -> Result<Option<String>, AutostartError> {
     }
 
     let utf16 = bytes
-        .chunks_exact(std::mem::size_of::<u16>())
-        .map(|chunk| u16::from_ne_bytes([chunk[0], chunk[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|chunk| u16::from_ne_bytes(*chunk))
         .take_while(|value| *value != 0)
         .collect::<Vec<_>>();
     String::from_utf16(&utf16)
