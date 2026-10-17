@@ -337,8 +337,11 @@ pub struct OverlayKeyLabels {
 #[serde(rename_all = "kebab-case")]
 pub enum KeyboardLayout {
     #[default]
+    #[serde(rename = "japanese-109", alias = "japanese109")]
     Japanese109,
+    #[serde(rename = "us-104", alias = "us104")]
     Us104,
+    #[serde(rename = "iso-105", alias = "iso105")]
     Iso105,
 }
 
@@ -797,6 +800,30 @@ pub fn save_labels_atomic(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn keyboard_layout_wire_values_match_ui_and_accept_legacy() {
+        let html = include_str!("../../ui/index.html");
+        for (layout, wire, legacy) in [
+            (
+                super::KeyboardLayout::Japanese109,
+                "japanese-109",
+                "japanese109",
+            ),
+            (super::KeyboardLayout::Us104, "us-104", "us104"),
+            (super::KeyboardLayout::Iso105, "iso-105", "iso105"),
+        ] {
+            assert_eq!(serde_json::to_value(layout).unwrap(), wire);
+            assert!(html.contains(&format!("value=\"{wire}\"")));
+            for value in [wire, legacy] {
+                assert_eq!(
+                    serde_json::from_value::<super::KeyboardLayout>(serde_json::json!(value))
+                        .unwrap(),
+                    layout
+                );
+            }
+        }
+    }
+
     use super::*;
 
     #[test]
