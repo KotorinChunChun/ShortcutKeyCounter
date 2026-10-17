@@ -1,0 +1,1 @@
+- https://www.mozilla.org/media/MPL/2.0/index.txt (selectors 0.36.1/lib.rs のMPL-2.0宣言)

@@ -13,6 +13,7 @@
 /dist/
 /publish/
 *.log
+/dev/history/*/logs/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal

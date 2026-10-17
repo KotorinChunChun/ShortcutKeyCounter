@@ -194,6 +194,8 @@ pwsh -ExecutionPolicy Bypass -File .\apps\shortcut-key-counter\scripts\build-ui.
 
 本ソフトウェアは[MIT License](LICENSE.txt)で公開しています。
 
+依存ライブラリには各ライセンスが適用されます。[第三者ライセンスと画像素材の出典](docs/third-party-licenses.md)を参照してください。配布ZIPには`third-party/`の表示文とMPL対象の原本ソースを同梱します。
+
 ## 作者・フィードバック
 
 - GitHub: [KotorinChunChun](https://github.com/KotorinChunChun)

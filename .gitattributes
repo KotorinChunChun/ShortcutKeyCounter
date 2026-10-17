@@ -1,0 +1,3 @@
+# ライセンス原文と検証ハッシュを改行変換から保護する。
+third-party/** -text
+third-party/sources/*.crate binary
