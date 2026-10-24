@@ -2,7 +2,7 @@
 
 ## 0. 2026-08-16 DB lock型エラー回帰確認
 
-`apps/shortcut-key-counter/src/tauri_commands.rs` に `&db_lock(&state)?` が残っていないことを確認します。DBを使うTauri commandは `let db = db_lock(&state)?;` でguardを束縛してから `command_api` へ `&db` を渡します。
+`apps/shortcut-key-counter/src/tauri_commands/` 配下の全ファイルに `&db_lock(&state)?` が残っていないことを確認します。DBを使うTauri commandは `let db = db_lock(&state)?;` でguardを束縛してから `command_api` へ `&db` を渡します。
 
 `dev/scripts/test-release-ShortcutKeyCounter-all.ps1` はこの禁止パターンを自動検査し、その後 `cargo check --workspace --all-targets --all-features` を実行します。E0308（`expected Connection, found MutexGuard`）が再発した場合は検証を中断してください。
 

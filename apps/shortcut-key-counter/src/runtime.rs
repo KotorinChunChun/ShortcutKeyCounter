@@ -13,8 +13,8 @@ use thiserror::Error;
 use crate::capture_control::{CaptureControlError, CaptureController};
 use crate::capture_worker::{
     new_capture_gate, shared_duplicate_guard_threshold, shared_excluded_apps, start_capture_worker,
-    CaptureGate, CaptureQueue, CaptureWorkerHandle, SharedDuplicateGuardThreshold,
-    SharedExcludedApps, WorkerError, WorkerStats,
+    CaptureGate, CaptureQueue, CaptureWorkerHandle, CaptureWorkerShared,
+    SharedDuplicateGuardThreshold, SharedExcludedApps, WorkerError, WorkerStats,
 };
 use crate::database_environment::{DatabaseEnvironment, SharedDatabaseEnvironment};
 use crate::diagnostics::{DiagnosticEvent, DiagnosticLogger};
@@ -62,22 +62,15 @@ pub enum RuntimeError {
 pub struct CaptureRuntime {
     controller: Arc<Mutex<CaptureController>>,
     queue: CaptureQueue,
-    shared_exclusions: SharedExcludedApps,
-    key_mapping: SharedKeyMapping,
-    key_policy: SharedKeyPolicy,
-    realtime_log: RealtimeLog,
-    security_status: SharedSecurityStatus,
-    overlay: OverlayHandle,
+    /// workerと共有するstate。DB切替でworkerを作り直しても同じものを引き継ぐ。
+    shared: CaptureWorkerShared,
     overlay_runtime: Option<OverlayRuntime>,
-    capture_gate: CaptureGate,
     worker: Option<CaptureWorkerHandle>,
     power_monitor: Option<PowerMonitorHandle>,
     stop_sender: Option<Sender<()>>,
     lifecycle_thread: Option<JoinHandle<()>>,
     logger: Arc<DiagnosticLogger>,
     active_database: SharedDatabaseEnvironment,
-    duplicate_guard_threshold: SharedDuplicateGuardThreshold,
-    key_search: KeySearchCapture,
 }
 
 impl CaptureRuntime {
@@ -163,27 +156,30 @@ impl CaptureRuntime {
         key_search: KeySearchCapture,
     ) -> Result<Self, RuntimeError> {
         let queue = CaptureQueue::new();
-        let capture_gate = new_capture_gate();
-        let security_status = shared_security_status();
+        let shared = CaptureWorkerShared {
+            excluded_apps: shared_exclusions,
+            capture_gate: new_capture_gate(),
+            key_mapping,
+            key_policy,
+            realtime_log,
+            overlay,
+            duplicate_guard_threshold,
+            security_status: shared_security_status(),
+            key_search,
+        };
         let worker = start_capture_worker(
             queue.receiver(),
             queue.elevated_receiver(),
             connection,
-            Arc::clone(&shared_exclusions),
-            Arc::clone(&capture_gate),
-            Arc::clone(&key_mapping),
-            Arc::clone(&key_policy),
-            realtime_log.clone(),
-            overlay.clone(),
-            Arc::clone(&duplicate_guard_threshold),
-            Arc::clone(&security_status),
-            key_search.clone(),
+            shared.clone(),
         )?;
         // Debugの明示的な隔離試験では本番保存先、Run同期、入力Hookを使用しない。
         let isolated_test = cfg!(debug_assertions)
             && std::env::var_os("SHORTCUT_KEY_COUNTER_TEST_LOCALAPPDATA").is_some();
         let capture = if isolated_test {
-            capture_gate.store(false, std::sync::atomic::Ordering::Release);
+            shared
+                .capture_gate
+                .store(false, std::sync::atomic::Ordering::Release);
             Ok(CaptureController::paused(queue.clone()))
         } else {
             CaptureController::start(queue.clone())
@@ -226,22 +222,14 @@ impl CaptureRuntime {
         Ok(Self {
             controller,
             queue,
-            shared_exclusions,
-            key_mapping,
-            key_policy,
-            realtime_log,
-            security_status,
-            overlay,
+            shared,
             overlay_runtime: Some(overlay_runtime),
-            capture_gate,
             worker: Some(worker),
             power_monitor: Some(power_monitor),
             stop_sender: Some(stop_sender),
             lifecycle_thread: Some(lifecycle_thread),
             logger: logger_for_runtime,
             active_database,
-            duplicate_guard_threshold,
-            key_search,
         })
     }
 
@@ -260,27 +248,27 @@ impl CaptureRuntime {
     }
 
     pub fn shared_exclusions(&self) -> SharedExcludedApps {
-        Arc::clone(&self.shared_exclusions)
+        Arc::clone(&self.shared.excluded_apps)
     }
 
     pub fn key_mapping(&self) -> SharedKeyMapping {
-        Arc::clone(&self.key_mapping)
+        Arc::clone(&self.shared.key_mapping)
     }
 
     pub fn key_policy(&self) -> SharedKeyPolicy {
-        Arc::clone(&self.key_policy)
+        Arc::clone(&self.shared.key_policy)
     }
 
     pub fn realtime_log(&self) -> RealtimeLog {
-        self.realtime_log.clone()
+        self.shared.realtime_log.clone()
     }
 
     pub fn security_status(&self) -> SharedSecurityStatus {
-        Arc::clone(&self.security_status)
+        Arc::clone(&self.shared.security_status)
     }
 
     pub fn overlay_handle(&self) -> OverlayHandle {
-        self.overlay.clone()
+        self.shared.overlay.clone()
     }
 
     pub fn logger(&self) -> Arc<DiagnosticLogger> {
@@ -288,23 +276,25 @@ impl CaptureRuntime {
     }
 
     pub fn capture_gate(&self) -> CaptureGate {
-        Arc::clone(&self.capture_gate)
+        Arc::clone(&self.shared.capture_gate)
     }
 
     pub fn duplicate_guard_seconds(&self) -> f64 {
-        self.duplicate_guard_threshold
+        self.shared
+            .duplicate_guard_threshold
             .load(std::sync::atomic::Ordering::Acquire) as f64
             / 1000.0
     }
 
     pub fn set_duplicate_guard_seconds(&self, seconds: f64) {
         let millis = (seconds.clamp(0.0, 10.0) * 1000.0).round() as u64;
-        self.duplicate_guard_threshold
+        self.shared
+            .duplicate_guard_threshold
             .store(millis, std::sync::atomic::Ordering::Release);
     }
 
     pub fn key_search(&self) -> KeySearchCapture {
-        self.key_search.clone()
+        self.shared.key_search.clone()
     }
 
     pub fn active_database(&self) -> SharedDatabaseEnvironment {
@@ -333,15 +323,7 @@ impl CaptureRuntime {
                 self.queue.receiver(),
                 self.queue.elevated_receiver(),
                 connection,
-                Arc::clone(&self.shared_exclusions),
-                Arc::clone(&self.capture_gate),
-                Arc::clone(&self.key_mapping),
-                Arc::clone(&self.key_policy),
-                self.realtime_log.clone(),
-                self.overlay.clone(),
-                Arc::clone(&self.duplicate_guard_threshold),
-                Arc::clone(&self.security_status),
-                self.key_search.clone(),
+                self.shared.clone(),
             )?)
         };
 
@@ -368,7 +350,9 @@ impl CaptureRuntime {
     }
 
     pub fn capture_gate_enabled(&self) -> bool {
-        self.capture_gate.load(std::sync::atomic::Ordering::Acquire)
+        self.shared
+            .capture_gate
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     pub fn worker_running(&self) -> bool {
@@ -378,7 +362,8 @@ impl CaptureRuntime {
     }
 
     pub fn set_capture_gate(&self, enabled: bool) {
-        self.capture_gate
+        self.shared
+            .capture_gate
             .store(enabled, std::sync::atomic::Ordering::Release);
         if !enabled {
             self.queue.clear_pending();
