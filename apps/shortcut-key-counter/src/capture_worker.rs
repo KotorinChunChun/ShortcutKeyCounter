@@ -185,21 +185,26 @@ pub struct CaptureWorkerHandle {
     join_handle: Option<JoinHandle<Result<WorkerStats, WorkerError>>>,
 }
 
+/// Capture workerがUI・設定側と共有するstate一式。
+#[derive(Clone)]
+pub struct CaptureWorkerShared {
+    pub excluded_apps: SharedExcludedApps,
+    pub capture_gate: CaptureGate,
+    pub key_mapping: SharedKeyMapping,
+    pub key_policy: SharedKeyPolicy,
+    pub realtime_log: RealtimeLog,
+    pub overlay: OverlayHandle,
+    pub duplicate_guard_threshold: SharedDuplicateGuardThreshold,
+    pub security_status: SharedSecurityStatus,
+    pub key_search: KeySearchCapture,
+}
+
 /// Capture workerを起動する。DB writerはこのthreadだけに限定する。
-#[allow(clippy::too_many_arguments)]
 pub fn start_capture_worker(
     local_receiver: Receiver<CapturedInput>,
     elevated_receiver: Receiver<CapturedInput>,
     connection: Connection,
-    excluded_apps: SharedExcludedApps,
-    capture_gate: CaptureGate,
-    key_mapping: SharedKeyMapping,
-    key_policy: SharedKeyPolicy,
-    realtime_log: RealtimeLog,
-    overlay: OverlayHandle,
-    duplicate_guard_threshold: SharedDuplicateGuardThreshold,
-    security_status: SharedSecurityStatus,
-    key_search: KeySearchCapture,
+    shared: CaptureWorkerShared,
 ) -> Result<CaptureWorkerHandle, WorkerError> {
     let (stop_sender, stop_receiver) = bounded(1);
     let join_handle = thread::Builder::new()
@@ -209,16 +214,7 @@ pub fn start_capture_worker(
                 local_receiver,
                 elevated_receiver,
                 stop_receiver,
-                connection,
-                excluded_apps,
-                capture_gate,
-                key_mapping,
-                key_policy,
-                realtime_log,
-                overlay,
-                duplicate_guard_threshold,
-                security_status,
-                key_search,
+                CaptureWorker::new(connection, shared),
             )
         })
         .map_err(WorkerError::ThreadStart)?;
@@ -263,153 +259,122 @@ impl Drop for CaptureWorkerHandle {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn run_worker(
     local_receiver: Receiver<CapturedInput>,
     elevated_receiver: Receiver<CapturedInput>,
     stop_receiver: Receiver<()>,
-    mut connection: Connection,
-    excluded_apps: SharedExcludedApps,
-    capture_gate: CaptureGate,
-    key_mapping: SharedKeyMapping,
-    key_policy: SharedKeyPolicy,
-    realtime_log: RealtimeLog,
-    overlay: OverlayHandle,
-    duplicate_guard_threshold: SharedDuplicateGuardThreshold,
-    security_status: SharedSecurityStatus,
-    key_search: KeySearchCapture,
+    mut worker: CaptureWorker,
 ) -> Result<WorkerStats, WorkerError> {
-    let security_gate = SecurityGate::new(security_status);
-    let mut duplicate_guard = DuplicateGuard::new();
-    let mut stats = WorkerStats::default();
-
     loop {
-        select! {
+        let (source, received) = select! {
             recv(stop_receiver) -> _ => break,
-            recv(local_receiver) -> received => match received {
-                Ok(input) => process_worker_input(
-                    &mut connection,
-                    &mut duplicate_guard,
-                    &excluded_apps,
-                    &capture_gate,
-                    &key_mapping,
-                    &key_policy,
-                    &realtime_log,
-                    &overlay,
-                    &duplicate_guard_threshold,
-                    &key_search,
-                    OverlayCaptureSource::Local,
-                    input,
-                    &mut stats,
-                    &security_gate,
-                )?,
-                Err(_) => break,
-            },
-            recv(elevated_receiver) -> received => match received {
-                Ok(input) => process_worker_input(
-                    &mut connection,
-                    &mut duplicate_guard,
-                    &excluded_apps,
-                    &capture_gate,
-                    &key_mapping,
-                    &key_policy,
-                    &realtime_log,
-                    &overlay,
-                    &duplicate_guard_threshold,
-                    &key_search,
-                    OverlayCaptureSource::Elevated,
-                    input,
-                    &mut stats,
-                    &security_gate,
-                )?,
-                Err(_) => break,
-            }
+            recv(local_receiver) -> received => (OverlayCaptureSource::Local, received),
+            recv(elevated_receiver) -> received => (OverlayCaptureSource::Elevated, received),
+        };
+        match received {
+            Ok(input) => worker.process(source, input)?,
+            Err(_) => break,
         }
     }
 
-    Ok(stats)
+    Ok(worker.stats)
 }
 
-#[allow(clippy::too_many_arguments)]
-fn process_worker_input(
-    connection: &mut Connection,
-    duplicate_guard: &mut DuplicateGuard,
-    excluded_apps: &SharedExcludedApps,
-    capture_gate: &CaptureGate,
-    key_mapping: &SharedKeyMapping,
-    key_policy: &SharedKeyPolicy,
-    realtime_log: &RealtimeLog,
-    overlay: &OverlayHandle,
-    duplicate_guard_threshold: &SharedDuplicateGuardThreshold,
-    key_search: &KeySearchCapture,
-    source: OverlayCaptureSource,
-    input: CapturedInput,
-    stats: &mut WorkerStats,
-    security_gate: &SecurityGate,
-) -> Result<(), WorkerError> {
-    if !capture_gate.load(Ordering::Acquire) {
-        return Ok(());
-    }
-    // RULE-SEC-003/004/007: Security Gate runs before exclusion, Overlay, policy and DB.
-    if !security_gate.allows_input() {
-        // Security Gate中は既存Overlay sessionも破棄し、repeat runを保護領域の
-        // 前後で継続させない。入力内容自体はOverlay threadへ送らない。
-        overlay.reset_session();
-        return Ok(());
-    }
-    // UI検索専用Capture mode。ここで消費した入力はOverlay/DB/Realtime/統計へ進めない。
-    if key_search.consume_if_armed(&input) {
-        return Ok(());
-    }
-    let excluded_snapshot = excluded_apps
-        .read()
-        .map_err(|_| WorkerError::ExclusionStatePoisoned)?
-        .clone();
-    if excluded_snapshot.contains(&input.foreground_executable.to_ascii_lowercase()) {
-        stats.record(ProcessOutcome::DroppedExcluded);
-        return Ok(());
-    }
-    // RULE-UI-012/013: detect the retreat click by global pointer coordinates while
-    // preserving click-through. A retreat click is not a shortcut-statistics event.
-    if overlay.consume_reposition_click(&input) {
-        return Ok(());
-    }
-    duplicate_guard.set_threshold(Duration::from_millis(
-        duplicate_guard_threshold
-            .load(Ordering::Acquire)
-            .min(10_000),
-    ));
-    let mapping_snapshot = key_mapping
-        .read()
-        .map_err(|_| WorkerError::KeyMappingStatePoisoned)?
-        .clone();
-    let trace = process_captured_input_detailed(
-        connection,
-        duplicate_guard,
-        &excluded_snapshot,
-        &mapping_snapshot,
-        &key_policy
-            .read()
-            .map_err(|_| WorkerError::KeyPolicyStatePoisoned)?
-            .clone(),
-        input,
-        Instant::now(),
-        Some((overlay, source)),
-    )?;
-    // RULE-SEC-002: Realtime Log is a view of events that were actually persisted.
-    // DisplayOnly / Ignore / excluded / security-gated / duplicate inputs never enter it.
-    if trace.outcome == ProcessOutcome::Recorded {
-        if let Some(shortcut) = trace.shortcut.clone() {
-            realtime_log.push(
-                trace.occurred_at,
-                shortcut,
-                trace.application.clone(),
-                trace.outcome.as_log_value(),
-            );
+/// worker thread内だけで所有する処理state。
+struct CaptureWorker {
+    connection: Connection,
+    duplicate_guard: DuplicateGuard,
+    security_gate: SecurityGate,
+    shared: CaptureWorkerShared,
+    stats: WorkerStats,
+}
+
+impl CaptureWorker {
+    fn new(connection: Connection, shared: CaptureWorkerShared) -> Self {
+        Self {
+            connection,
+            duplicate_guard: DuplicateGuard::new(),
+            security_gate: SecurityGate::new(Arc::clone(&shared.security_status)),
+            shared,
+            stats: WorkerStats::default(),
         }
     }
-    stats.record(trace.outcome);
-    Ok(())
+
+    fn process(
+        &mut self,
+        source: OverlayCaptureSource,
+        input: CapturedInput,
+    ) -> Result<(), WorkerError> {
+        let shared = &self.shared;
+        if !shared.capture_gate.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        // RULE-SEC-003/004/007: Security Gate runs before exclusion, Overlay, policy and DB.
+        if !self.security_gate.allows_input() {
+            // Security Gate中は既存Overlay sessionも破棄し、repeat runを保護領域の
+            // 前後で継続させない。入力内容自体はOverlay threadへ送らない。
+            shared.overlay.reset_session();
+            return Ok(());
+        }
+        // UI検索専用Capture mode。ここで消費した入力はOverlay/DB/Realtime/統計へ進めない。
+        if shared.key_search.consume_if_armed(&input) {
+            return Ok(());
+        }
+        let excluded_snapshot = shared
+            .excluded_apps
+            .read()
+            .map_err(|_| WorkerError::ExclusionStatePoisoned)?
+            .clone();
+        if excluded_snapshot.contains(&input.foreground_executable.to_ascii_lowercase()) {
+            self.stats.record(ProcessOutcome::DroppedExcluded);
+            return Ok(());
+        }
+        // RULE-UI-012/013: detect the retreat click by global pointer coordinates while
+        // preserving click-through. A retreat click is not a shortcut-statistics event.
+        if shared.overlay.consume_reposition_click(&input) {
+            return Ok(());
+        }
+        self.duplicate_guard.set_threshold(Duration::from_millis(
+            shared
+                .duplicate_guard_threshold
+                .load(Ordering::Acquire)
+                .min(10_000),
+        ));
+        let mapping_snapshot = shared
+            .key_mapping
+            .read()
+            .map_err(|_| WorkerError::KeyMappingStatePoisoned)?
+            .clone();
+        let policy_snapshot = shared
+            .key_policy
+            .read()
+            .map_err(|_| WorkerError::KeyPolicyStatePoisoned)?
+            .clone();
+        let trace = process_captured_input_detailed(
+            &mut self.connection,
+            &mut self.duplicate_guard,
+            &excluded_snapshot,
+            &mapping_snapshot,
+            &policy_snapshot,
+            input,
+            Instant::now(),
+            Some((&shared.overlay, source)),
+        )?;
+        // RULE-SEC-002: Realtime Log is a view of events that were actually persisted.
+        // DisplayOnly / Ignore / excluded / security-gated / duplicate inputs never enter it.
+        if trace.outcome == ProcessOutcome::Recorded {
+            if let Some(shortcut) = trace.shortcut.clone() {
+                shared.realtime_log.push(
+                    trace.occurred_at,
+                    shortcut,
+                    trace.application.clone(),
+                    trace.outcome.as_log_value(),
+                );
+            }
+        }
+        self.stats.record(trace.outcome);
+        Ok(())
+    }
 }
 
 impl WorkerStats {
@@ -586,27 +551,7 @@ fn process_captured_input_detailed(
     }
 
     let action = key_policy.resolve(candidate.identity(), candidate.kind);
-    let mut decision = KeyDecision::from(action);
-    // RULE-SEC-001 / RULE-SEC-006: unmodified letters, digits, symbols and numpad
-    // inputs never become persistent data, even if policy JSON requests recording.
-    if !has_any_modifier(&input.modifiers)
-        && matches!(input.main_input, MainInput::Key(vk) if is_unmodified_recording_prohibited(vk))
-    {
-        decision.record = false;
-    }
-    // RULE-UI-011: wheel-only input can be recorded when explicitly configured,
-    // but remains hidden from Overlay.
-    if !has_any_modifier(&input.modifiers)
-        && matches!(
-            input.main_input,
-            MainInput::WheelUp
-                | MainInput::WheelDown
-                | MainInput::WheelLeft
-                | MainInput::WheelRight
-        )
-    {
-        decision.display = false;
-    }
+    let decision = enforce_input_invariants(KeyDecision::from(action), &input);
     let mut candidate = candidate;
     candidate.display_break = decision.break_row;
     if decision.display {
@@ -670,8 +615,22 @@ fn process_captured_input_detailed(
     })
 }
 
-fn has_any_modifier(modifiers: &shortcut_core::model::ModifierState) -> bool {
-    modifiers.ctrl || modifiers.alt || modifiers.win || modifiers.shift
+/// KeyPolicyの判定結果に、設定では解除できない入力不変条件を上書きする。
+fn enforce_input_invariants(mut decision: KeyDecision, input: &CapturedInput) -> KeyDecision {
+    if input.modifiers.any() {
+        return decision;
+    }
+    // RULE-SEC-001 / RULE-SEC-006: unmodified letters, digits, symbols and numpad
+    // inputs never become persistent data, even if policy JSON requests recording.
+    if matches!(input.main_input, MainInput::Key(vk) if is_unmodified_recording_prohibited(vk)) {
+        decision.record = false;
+    }
+    // RULE-UI-011: wheel-only input can be recorded when explicitly configured,
+    // but remains hidden from Overlay.
+    if input.main_input.is_wheel() {
+        decision.display = false;
+    }
+    decision
 }
 
 fn source_or_local(
@@ -1007,18 +966,55 @@ mod tests {
             queue.receiver(),
             queue.elevated_receiver(),
             connection(),
-            shared_excluded_apps(HashSet::new()),
-            new_capture_gate(),
-            crate::key_mapping_state::shared(KeyMapping::default()),
-            crate::key_policy::shared(KeyPolicyConfig::default()),
-            RealtimeLog::default(),
-            overlay,
-            shared_duplicate_guard_threshold(1.0),
-            crate::security_gate::shared_security_status(),
-            crate::key_search::KeySearchCapture::default(),
+            CaptureWorkerShared {
+                excluded_apps: shared_excluded_apps(HashSet::new()),
+                capture_gate: new_capture_gate(),
+                key_mapping: crate::key_mapping_state::shared(KeyMapping::default()),
+                key_policy: crate::key_policy::shared(KeyPolicyConfig::default()),
+                realtime_log: RealtimeLog::default(),
+                overlay,
+                duplicate_guard_threshold: shared_duplicate_guard_threshold(1.0),
+                security_status: crate::security_gate::shared_security_status(),
+                key_search: crate::key_search::KeySearchCapture::default(),
+            },
         )
         .expect("worker start");
         let stats = handle.stop().expect("worker stop");
         assert_eq!(stats, WorkerStats::default());
+    }
+
+    #[test]
+    fn input_invariants_override_policy_only_for_unmodified_inputs() {
+        let allow_all = KeyDecision {
+            display: true,
+            record: true,
+            break_row: true,
+        };
+        let unmodified = |main_input| CapturedInput {
+            modifiers: ModifierState::default(),
+            ..event("notepad.exe", main_input)
+        };
+        let cases = [
+            // (入力, display, record)
+            (MainInput::Key(0x41), true, false),
+            (MainInput::Key(0x30), true, false),
+            (MainInput::Key(0xBA), true, false),
+            (MainInput::Key(0x61), true, false),
+            (MainInput::Key(0x6B), true, false),
+            (MainInput::Key(0x74), true, true),
+            (MainInput::Key(0x0D), true, true),
+            (MainInput::MouseLeft, true, true),
+            (MainInput::WheelUp, false, true),
+            (MainInput::WheelRight, false, true),
+        ];
+        for (main_input, display, record) in cases {
+            let decision = enforce_input_invariants(allow_all, &unmodified(main_input.clone()));
+            assert_eq!(decision.display, display, "{main_input:?}");
+            assert_eq!(decision.record, record, "{main_input:?}");
+            assert!(decision.break_row, "{main_input:?}");
+
+            let modified = enforce_input_invariants(allow_all, &event("notepad.exe", main_input));
+            assert_eq!(modified, allow_all);
+        }
     }
 }
