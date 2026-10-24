@@ -9,7 +9,7 @@ use rusqlite::Connection;
 use shortcut_core::duplicate_guard::DuplicateGuard;
 use shortcut_core::eligibility::is_unmodified_recording_prohibited;
 use shortcut_core::key_mapping::KeyMapping;
-use shortcut_core::key_names::{is_modifier_key, normalize_single_key};
+use shortcut_core::key_names::{is_modifier_key, main_input_name};
 use shortcut_core::model::{CapturedInput, MainInput, RecordableEvent};
 use shortcut_core::normalizer::normalize_input;
 use shortcut_storage::{record_event, StorageError};
@@ -495,9 +495,7 @@ fn build_overlay_candidate_for(
     if matches!(&input.main_input, MainInput::Key(vk) if is_modifier_key(*vk)) {
         return Err(OverlayCandidateError::Ineligible);
     }
-    let has_modifier =
-        input.modifiers.ctrl || input.modifiers.alt || input.modifiers.win || input.modifiers.shift;
-    let kind = if has_modifier {
+    let kind = if input.modifiers.any() {
         OverlayInputKind::Shortcut
     } else {
         OverlayInputKind::SingleKey
@@ -518,19 +516,8 @@ fn build_overlay_candidate_for(
             (shortcut.clone(), Some(shortcut))
         }
         OverlayInputKind::SingleKey => {
-            let key = match input.main_input {
-                MainInput::Key(vk) => normalize_single_key(u32::from(vk))
-                    .ok_or(OverlayCandidateError::Unsupported(vk))?,
-                MainInput::MouseLeft => "MouseLeft".to_owned(),
-                MainInput::MouseRight => "MouseRight".to_owned(),
-                MainInput::MouseMiddle => "MouseMiddle".to_owned(),
-                MainInput::MouseX1 => "MouseX1".to_owned(),
-                MainInput::MouseX2 => "MouseX2".to_owned(),
-                MainInput::WheelUp => "WheelUp".to_owned(),
-                MainInput::WheelDown => "WheelDown".to_owned(),
-                MainInput::WheelLeft => "WheelLeft".to_owned(),
-                MainInput::WheelRight => "WheelRight".to_owned(),
-            };
+            let key =
+                main_input_name(&input.main_input).map_err(OverlayCandidateError::Unsupported)?;
             (key, None)
         }
     };
