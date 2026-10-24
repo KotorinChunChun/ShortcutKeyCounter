@@ -600,6 +600,58 @@ fn daily_csv_output_name_cannot_leave_the_output_directory() {
     }
 }
 
+#[test]
+fn csv_exports_neutralize_formula_like_application_names() {
+    // 実行ファイル名は = + - @ で始められるため、Excel等で数式として実行されないこと。
+    let mut connection = empty_database();
+    let applications = [
+        "=HYPERLINK(\"http://example.invalid\",\"x\").exe",
+        "+calc.exe",
+        "-tool.exe",
+        "@SUM(A1).exe",
+        "＝全角.exe",
+    ];
+    for application in applications {
+        let event = RecordableEvent {
+            occurred_at: NaiveDateTime::parse_from_str("2026-08-15 09:00:00", "%Y-%m-%d %H:%M:%S")
+                .expect("timestamp"),
+            shortcut: "Ctrl+C".to_owned(),
+            application: application.to_owned(),
+        };
+        record_event(&mut connection, &event).expect("record event");
+    }
+    let directory = TempDir::new("formula");
+
+    let daily = command_api::export_daily_csv_command(
+        &connection,
+        directory.path(),
+        None,
+        None,
+        None,
+        Some("formula"),
+    )
+    .expect("daily CSV");
+    let events =
+        command_api::export_events_csv_command(&connection, directory.path()).expect("events CSV");
+
+    for path in [&daily.path, &events.path] {
+        let lines = read_csv_lines(path);
+        assert_eq!(lines.len(), applications.len() + 1, "{}", path.display());
+        // 日次: date,shortcut,application,count / 詳細: timestamp,shortcut,application
+        for line in &lines[1..] {
+            let (_, application) = line.split_once(",Ctrl+C,").expect("shortcut column");
+            let application = application.strip_prefix('"').unwrap_or(application);
+            assert!(application.starts_with('\''), "{}: {line}", path.display());
+        }
+    }
+    let daily_lines = read_csv_lines(&daily.path);
+    assert!(daily_lines.contains(&"2026-08-15,Ctrl+C,'+calc.exe,1".to_owned()));
+    assert!(daily_lines.contains(
+        &"2026-08-15,Ctrl+C,\"'=HYPERLINK(\"\"http://example.invalid\"\",\"\"x\"\").exe\",1"
+            .to_owned()
+    ));
+}
+
 // ---------------------------------------------------------------------------
 // キーマッピング編集セッション
 
