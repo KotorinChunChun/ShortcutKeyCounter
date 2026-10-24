@@ -9,6 +9,7 @@ use shortcut_storage::statistics::{
     RankedShortcut, ShortcutDetail, ShortcutRankingRow,
 };
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
 
 use crate::analytics::{self, AnalyticsRange, RankingsSnapshot, UsageGraphSnapshot};
@@ -63,6 +64,26 @@ fn settings_db_lock(
         .map_err(|_| CommandError::state())
 }
 
+fn parse_date_range(start: &str, end: &str) -> Result<(NaiveDate, NaiveDate), CommandError> {
+    Ok((parse_date(start)?, parse_date(end)?))
+}
+
+/// 設定変更コマンドの共通戻り値として、保存後の設定を読み直す。
+fn read_settings(db: &rusqlite::Connection) -> Result<SettingsSnapshot, CommandError> {
+    command_api::get_settings(db)
+        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+}
+
+fn settings_snapshot(state: &AppState) -> Result<SettingsSnapshot, CommandError> {
+    let db = settings_db_lock(state)?;
+    read_settings(&db)
+}
+
+fn downloads_directory(error_code: &str) -> Result<PathBuf, CommandError> {
+    downloads_or_fallback(None)
+        .map_err(|_| CommandError::new(error_code, "Downloadsフォルダーを取得できませんでした。"))
+}
+
 fn capture_status(state: &AppState) -> Result<CaptureStatus, CommandError> {
     Ok(CaptureStatus {
         enabled: state.capture_enabled().map_err(|_| CommandError::state())?,
@@ -112,8 +133,7 @@ pub fn get_dashboard_summary(
     start: String,
     end: String,
 ) -> Result<DashboardSummary, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::dashboard_summary(&db, start, end).map_err(|_| CommandError::db())
 }
@@ -126,8 +146,7 @@ pub fn get_shortcut_ranking(
     application: Option<String>,
     limit: u32,
 ) -> Result<Vec<RankedShortcut>, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::shortcut_ranking(&db, start, end, application.as_deref(), limit)
         .map_err(|_| CommandError::db())
@@ -141,8 +160,7 @@ pub fn get_shortcut_ranking_extended(
     application: Option<String>,
     limit: u32,
 ) -> Result<Vec<ShortcutRankingRow>, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::shortcut_ranking_extended(&db, start, end, application.as_deref(), limit)
         .map_err(|_| CommandError::db())
@@ -155,8 +173,7 @@ pub fn get_application_ranking(
     end: String,
     limit: u32,
 ) -> Result<Vec<RankedApplication>, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::application_ranking(&db, start, end, limit).map_err(|_| CommandError::db())
 }
@@ -167,8 +184,7 @@ pub fn get_application_statistics(
     start: String,
     end: String,
 ) -> Result<Vec<ApplicationStats>, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::application_statistics(&db, start, end).map_err(|_| CommandError::db())
 }
@@ -181,8 +197,7 @@ pub fn get_daily_trend(
     shortcut: Option<String>,
     application: Option<String>,
 ) -> Result<Vec<DailyPoint>, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::daily_trend(&db, start, end, shortcut.as_deref(), application.as_deref())
         .map_err(|_| CommandError::db())
@@ -194,8 +209,7 @@ pub fn get_hourly_trend(
     start: String,
     end: String,
 ) -> Result<HourlyTrend, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::hourly_trend(&db, start, end).map_err(|_| CommandError::db())
 }
@@ -207,8 +221,7 @@ pub fn get_shortcut_detail(
     start: String,
     end: String,
 ) -> Result<ShortcutDetail, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::shortcut_detail(&db, &shortcut, start, end).map_err(|_| CommandError::db())
 }
@@ -219,8 +232,7 @@ pub fn list_shortcuts(
     start: String,
     end: String,
 ) -> Result<Vec<RankedShortcut>, CommandError> {
-    let start = parse_date(&start)?;
-    let end = parse_date(&end)?;
+    let (start, end) = parse_date_range(&start, &end)?;
     let db = db_lock(&state)?;
     command_api::shortcut_catalog(&db, start, end).map_err(|_| CommandError::db())
 }
@@ -342,9 +354,7 @@ pub fn remove_user_excluded_app(
 
 #[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Result<SettingsSnapshot, CommandError> {
-    let db = settings_db_lock(&state)?;
-    command_api::get_settings(&db)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+    settings_snapshot(&state)
 }
 
 #[tauri::command]
@@ -362,8 +372,7 @@ pub fn set_auto_start(
     command_api::set_auto_start_command(&db, executable, enabled).map_err(|_| {
         CommandError::new("SETTINGS_FAILED", "自動起動設定を変更できませんでした。")
     })?;
-    command_api::get_settings(&db)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+    read_settings(&db)
 }
 
 #[tauri::command]
@@ -374,8 +383,7 @@ pub fn set_theme(
     let db = settings_db_lock(&state)?;
     command_api::set_theme_command(&db, &theme)
         .map_err(|_| CommandError::new("SETTINGS_FAILED", "テーマ設定を保存できませんでした。"))?;
-    command_api::get_settings(&db)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+    read_settings(&db)
 }
 
 #[tauri::command]
@@ -391,9 +399,7 @@ pub fn set_overlay_enabled(
         )
     })?;
     sync_overlay_ui(&app, enabled);
-    let db = settings_db_lock(&state)?;
-    command_api::get_settings(&db)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+    settings_snapshot(&state)
 }
 
 fn overlay_settings_snapshot(state: &AppState) -> Result<OverlaySettingsDto, CommandError> {
@@ -585,9 +591,7 @@ pub async fn set_capture_elevated(
                 )
             }
         })?;
-        let db = settings_db_lock(&state)?;
-        command_api::get_settings(&db)
-            .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+        settings_snapshot(&state)
     })
     .await
     .map_err(|_| {
@@ -606,9 +610,7 @@ pub fn set_usage_tracking(
     state.set_usage_tracking(enabled).map_err(|_| {
         CommandError::new("SETTINGS_FAILED", "利用時間設定を保存できませんでした。")
     })?;
-    let db = settings_db_lock(&state)?;
-    command_api::get_settings(&db)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+    settings_snapshot(&state)
 }
 
 #[tauri::command]
@@ -622,9 +624,7 @@ pub fn set_duplicate_guard_seconds(
             "連続入力抑制時間を保存できませんでした。",
         )
     })?;
-    let db = settings_db_lock(&state)?;
-    command_api::get_settings(&db)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+    settings_snapshot(&state)
 }
 
 #[tauri::command]
@@ -638,9 +638,7 @@ pub fn set_detail_event_retention_days(
             "詳細ショートカット履歴の保持日数を保存できませんでした。",
         )
     })?;
-    let db = settings_db_lock(&state)?;
-    command_api::get_settings(&db)
-        .map_err(|_| CommandError::new("SETTINGS_FAILED", "設定を読み込めませんでした。"))
+    settings_snapshot(&state)
 }
 
 #[tauri::command]
@@ -812,12 +810,7 @@ pub fn export_daily_csv(
     end_date: Option<String>,
     name: Option<String>,
 ) -> Result<ExportResult, CommandError> {
-    let directory = downloads_or_fallback(None).map_err(|_| {
-        CommandError::new(
-            "EXPORT_FAILED",
-            "Downloadsフォルダーを取得できませんでした。",
-        )
-    })?;
+    let directory = downloads_directory("EXPORT_FAILED")?;
     let start_date = start_date.as_deref().map(parse_date).transpose()?;
     let end_date = end_date.as_deref().map(parse_date).transpose()?;
     if let (Some(start), Some(end)) = (start_date, end_date) {
@@ -842,12 +835,7 @@ pub fn export_daily_csv(
 
 #[tauri::command]
 pub fn export_events_csv(state: State<'_, AppState>) -> Result<ExportResult, CommandError> {
-    let directory = downloads_or_fallback(None).map_err(|_| {
-        CommandError::new(
-            "EXPORT_FAILED",
-            "Downloadsフォルダーを取得できませんでした。",
-        )
-    })?;
+    let directory = downloads_directory("EXPORT_FAILED")?;
     let db = db_lock(&state)?;
     command_api::export_events_csv_command(&db, directory).map_err(|_| {
         CommandError::new(
@@ -859,12 +847,7 @@ pub fn export_events_csv(state: State<'_, AppState>) -> Result<ExportResult, Com
 
 #[tauri::command]
 pub fn backup_database(state: State<'_, AppState>) -> Result<BackupResult, CommandError> {
-    let directory = downloads_or_fallback(None).map_err(|_| {
-        CommandError::new(
-            "BACKUP_FAILED",
-            "Downloadsフォルダーを取得できませんでした。",
-        )
-    })?;
+    let directory = downloads_directory("BACKUP_FAILED")?;
     let db = db_lock(&state)?;
     command_api::backup_database_to_directory_command(&db, directory)
         .map_err(|_| CommandError::new("BACKUP_FAILED", "DBバックアップを作成できませんでした。"))
@@ -1134,12 +1117,7 @@ fn mapping_edit_error(error: crate::app_state::AppStateError) -> CommandError {
 pub fn export_key_mapping_json(
     state: State<'_, AppState>,
 ) -> Result<KeyMappingExportResult, CommandError> {
-    let directory = downloads_or_fallback(None).map_err(|_| {
-        CommandError::new(
-            "KEY_MAPPING_FAILED",
-            "Downloadsフォルダーを取得できませんでした。",
-        )
-    })?;
+    let directory = downloads_directory("KEY_MAPPING_FAILED")?;
     key_mapping_state::export_json(&directory, &state.key_mapping).map_err(|_| {
         CommandError::new(
             "KEY_MAPPING_FAILED",
