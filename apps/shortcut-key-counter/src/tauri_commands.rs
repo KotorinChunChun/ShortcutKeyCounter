@@ -8,6 +8,8 @@ use shortcut_storage::statistics::{
     ApplicationStats, DailyPoint, DashboardSummary, DataBounds, HourlyTrend, RankedApplication,
     RankedShortcut, ShortcutDetail, ShortcutRankingRow,
 };
+use shortcut_storage::StorageError;
+use shortcut_windows::elevation::ElevationError;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
@@ -16,15 +18,20 @@ use crate::analytics::{self, AnalyticsRange, RankingsSnapshot, UsageGraphSnapsho
 use crate::app_info::{self, AppInfo};
 use crate::app_state::{AppState, AppStateError};
 use crate::capture_health::CaptureHealthSnapshot;
-use crate::command_api::{self, CaptureStatus, OverlaySettingsDto, SettingsSnapshot};
+use crate::command_api::{
+    self, CaptureStatus, ExclusionCommandError, OverlaySettingsDto, SettingsSnapshot,
+};
 use crate::command_error::CommandError;
 use crate::database_environment::{DatabaseEnvironment, DatabaseEnvironmentSnapshot};
+use crate::elevated_capture::ElevatedCaptureError;
 use crate::key_mapping_state::{self, KeyMappingExportResult};
 use crate::key_policy::KeyPolicyConfig;
 use crate::maintenance::{
     downloads_or_fallback, BackupResult, ClearResult, DeleteBeforePreview, ExportResult,
 };
-use crate::mapping_edit_session::{MappingEditSessionSnapshot, MappingEditValuesDto};
+use crate::mapping_edit_session::{
+    MappingEditError, MappingEditSessionSnapshot, MappingEditValuesDto,
+};
 use crate::mapping_profiles::{self, MappingProfile};
 use crate::overlay::config::{KeyboardInputMode, KeyboardLayout, OverlayKeyLabels};
 use crate::realtime_log::RealtimeLogEntry;
@@ -309,14 +316,7 @@ pub fn add_excluded_app(
 ) -> Result<Vec<ExcludedApp>, CommandError> {
     let db = settings_db_lock(&state)?;
     command_api::add_excluded_app_and_reload(&db, &state.shared_exclusions, &executable_name)
-        .map_err(|error| {
-            let code = if error.to_string().contains("実行ファイル名が不正") {
-                "INVALID_EXECUTABLE_NAME"
-            } else {
-                "SETTINGS_FAILED"
-            };
-            CommandError::new(code, "除外アプリを追加できませんでした。")
-        })?;
+        .map_err(|error| add_excluded_app_error(&error))?;
     command_api::get_excluded_apps(&db).map_err(|_| CommandError::db())
 }
 
@@ -577,20 +577,9 @@ pub async fn set_capture_elevated(
     // Tauriのblocking poolへ退避してWebView event loopを止めない。
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
-        state.set_elevated_enabled(enabled).map_err(|error| {
-            let text = error.to_string();
-            if text.contains("キャンセル") {
-                CommandError::new(
-                    "UAC_CANCELLED",
-                    "管理者権限モードは有効化されませんでした。",
-                )
-            } else {
-                CommandError::new(
-                    "SETTINGS_FAILED",
-                    format!("管理者権限モードを切り替えられませんでした: {text}"),
-                )
-            }
-        })?;
+        state
+            .set_elevated_enabled(enabled)
+            .map_err(|error| elevated_switch_error(&error))?;
         settings_snapshot(&state)
     })
     .await
@@ -1097,20 +1086,40 @@ pub fn mapping_edit_session_status(
     state.mapping_edit_snapshot().map_err(mapping_edit_error)
 }
 
-fn mapping_edit_error(error: crate::app_state::AppStateError) -> CommandError {
-    let message = error.to_string();
-    let code = if message.contains("未保存") {
-        "MAPPING_EDIT_DIRTY"
-    } else if message.contains("処理中") {
-        "MAPPING_EDIT_BUSY"
-    } else if message.contains("既に開始") {
-        "MAPPING_EDIT_ACTIVE"
-    } else if message.contains("開始されていません") {
-        "MAPPING_EDIT_INACTIVE"
-    } else {
-        "MAPPING_EDIT_FAILED"
+fn mapping_edit_error(error: AppStateError) -> CommandError {
+    let code = match &error {
+        AppStateError::MappingEdit(MappingEditError::Dirty) => "MAPPING_EDIT_DIRTY",
+        AppStateError::MappingEdit(MappingEditError::Busy) => "MAPPING_EDIT_BUSY",
+        AppStateError::MappingEdit(MappingEditError::AlreadyActive) => "MAPPING_EDIT_ACTIVE",
+        AppStateError::MappingEdit(MappingEditError::Inactive) => "MAPPING_EDIT_INACTIVE",
+        _ => "MAPPING_EDIT_FAILED",
     };
-    CommandError::new(code, message)
+    CommandError::new(code, error.to_string())
+}
+
+fn add_excluded_app_error(error: &ExclusionCommandError) -> CommandError {
+    let code = match error {
+        ExclusionCommandError::Storage(StorageError::InvalidExecutableName) => {
+            "INVALID_EXECUTABLE_NAME"
+        }
+        _ => "SETTINGS_FAILED",
+    };
+    CommandError::new(code, "除外アプリを追加できませんでした。")
+}
+
+fn elevated_switch_error(error: &AppStateError) -> CommandError {
+    match error {
+        AppStateError::Elevated(ElevatedCaptureError::Elevation(ElevationError::Cancelled)) => {
+            CommandError::new(
+                "UAC_CANCELLED",
+                "管理者権限モードは有効化されませんでした。",
+            )
+        }
+        _ => CommandError::new(
+            "SETTINGS_FAILED",
+            format!("管理者権限モードを切り替えられませんでした: {error}"),
+        ),
+    }
 }
 
 #[tauri::command]
@@ -1155,4 +1164,81 @@ pub fn open_external_url(url: String) -> Result<(), CommandError> {
     }
     shortcut_windows::shell_open::open_url(&url)
         .map_err(|_| CommandError::new("OPEN_URL_FAILED", "GitHubを開けませんでした。"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn date_range_requires_iso_dates() {
+        let (start, end) = parse_date_range("2026-08-01", "2026-08-31").expect("valid range");
+        assert_eq!(start, NaiveDate::from_ymd_opt(2026, 8, 1).expect("date"));
+        assert_eq!(end, NaiveDate::from_ymd_opt(2026, 8, 31).expect("date"));
+        for (start, end) in [("2026/08/01", "2026-08-31"), ("2026-08-01", "")] {
+            let error = parse_date_range(start, end).expect_err("invalid date");
+            assert_eq!(error.code, "INVALID_DATE");
+            assert_eq!(error.message, "日付の形式が不正です。");
+        }
+    }
+
+    #[test]
+    fn mapping_edit_errors_keep_codes_and_messages() {
+        let cases = [
+            (MappingEditError::Dirty, "MAPPING_EDIT_DIRTY"),
+            (MappingEditError::Busy, "MAPPING_EDIT_BUSY"),
+            (MappingEditError::AlreadyActive, "MAPPING_EDIT_ACTIVE"),
+            (MappingEditError::Inactive, "MAPPING_EDIT_INACTIVE"),
+            (
+                MappingEditError::Io(std::io::Error::other("disk")),
+                "MAPPING_EDIT_FAILED",
+            ),
+        ];
+        for (error, code) in cases {
+            let error = AppStateError::MappingEdit(error);
+            let message = error.to_string();
+            let converted = mapping_edit_error(error);
+            assert_eq!(converted.code, code);
+            assert_eq!(converted.message, message);
+        }
+        assert_eq!(
+            mapping_edit_error(AppStateError::Poisoned).code,
+            "MAPPING_EDIT_FAILED"
+        );
+    }
+
+    #[test]
+    fn invalid_executable_name_is_reported_separately() {
+        let invalid = add_excluded_app_error(&ExclusionCommandError::Storage(
+            StorageError::InvalidExecutableName,
+        ));
+        assert_eq!(invalid.code, "INVALID_EXECUTABLE_NAME");
+        assert_eq!(invalid.message, "除外アプリを追加できませんでした。");
+
+        let other = add_excluded_app_error(&ExclusionCommandError::Storage(
+            StorageError::InvalidDateRange,
+        ));
+        assert_eq!(other.code, "SETTINGS_FAILED");
+        assert_eq!(other.message, "除外アプリを追加できませんでした。");
+    }
+
+    #[test]
+    fn uac_cancel_is_distinguished_from_other_elevation_failures() {
+        let cancelled = elevated_switch_error(&AppStateError::Elevated(
+            ElevatedCaptureError::Elevation(ElevationError::Cancelled),
+        ));
+        assert_eq!(cancelled.code, "UAC_CANCELLED");
+        assert_eq!(
+            cancelled.message,
+            "管理者権限モードは有効化されませんでした。"
+        );
+
+        let timeout = AppStateError::Elevated(ElevatedCaptureError::HandshakeTimeout);
+        let failed = elevated_switch_error(&timeout);
+        assert_eq!(failed.code, "SETTINGS_FAILED");
+        assert_eq!(
+            failed.message,
+            format!("管理者権限モードを切り替えられませんでした: {timeout}")
+        );
+    }
 }
