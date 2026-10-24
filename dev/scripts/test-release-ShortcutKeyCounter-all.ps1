@@ -28,11 +28,16 @@ foreach ($command in @('cargo', 'rustc', 'node')) {
 & pwsh -ExecutionPolicy Bypass -File '.\apps\shortcut-key-counter\scripts\build-ui.ps1'
 if ($LASTEXITCODE -ne 0) { throw 'UI build failed.' }
 
+# Tauri commands are split by domain under tauri_commands/. Gates scan every file there.
+$tauriCommands = @(Get-ChildItem (Join-Path $Root 'apps\shortcut-key-counter\src\tauri_commands') -Filter '*.rs' | ForEach-Object FullName)
+if ($tauriCommands.Count -eq 0) {
+    throw 'apps\shortcut-key-counter\src\tauri_commands\ にTauri commandのソースが見つかりません。'
+}
+
 # Regression gate: Tauri command must bind MutexGuard before passing &Connection.
 # Direct `&db_lock(&state)?` caused E0308 (expected Connection, found MutexGuard).
-$tauriCommands = Join-Path $Root 'apps\shortcut-key-counter\src\tauri_commands.rs'
 if (Select-String -Path $tauriCommands -SimpleMatch '&db_lock(&state)?' -Quiet) {
-    throw 'tauri_commands.rs に禁止パターン &db_lock(&state)? が残っています。let db = db_lock(&state)?; の後に &db を渡してください。'
+    throw 'tauri_commands/ に禁止パターン &db_lock(&state)? が残っています。let db = db_lock(&state)?; の後に &db を渡してください。'
 }
 
 # Regression gate: Windows logon autostart must be tray-only via -hide.
