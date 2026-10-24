@@ -117,6 +117,8 @@ $overlayConfig = Join-Path $Root 'apps\shortcut-key-counter\src\overlay\config.r
 $overlayManager = Join-Path $Root 'apps\shortcut-key-counter\src\overlay\manager.rs'
 $overlayWindow = Join-Path $Root 'crates\shortcut-windows\src\overlay_window.rs'
 $captureWorker = Join-Path $Root 'apps\shortcut-key-counter\src\capture_worker.rs'
+# MainInputの入力名変換はcapture_worker/key_search/normalizerで共有するためcoreに置く。
+$keyNames = Join-Path $Root 'crates\shortcut-core\src\key_names.rs'
 if (-not (Select-String -Path $overlayConfig -SimpleMatch 'display_duration_ms' -Quiet) -or
     -not (Select-String -Path $overlayConfig -SimpleMatch 'enter_ms: 160' -Quiet) -or
     -not (Select-String -Path $overlayConfig -SimpleMatch 'exit_ms: 400' -Quiet) -or
@@ -152,7 +154,8 @@ if (-not (Select-String -Path $overlayConfig -SimpleMatch 'OverlayDisplayMode' -
     -not (Select-String -Path $overlayManager -SimpleMatch 'append_or_create_continuation' -Quiet) -or
     -not (Select-String -Path $overlayWindow -SimpleMatch 'available_monitors' -Quiet) -or
     -not (Select-String -Path $overlayWindow -SimpleMatch 'set_display_target' -Quiet) -or
-    -not (Select-String -Path $captureWorker -SimpleMatch 'MouseMiddle' -Quiet) -or
+    -not (Select-String -Path $captureWorker -SimpleMatch 'main_input_name(&input.main_input)' -Quiet) -or
+    -not (Select-String -Path $keyNames -SimpleMatch 'MainInput::MouseMiddle' -Quiet) -or
     -not (Select-String -Path $overlayTypes -SimpleMatch 'OverlayDisplayMode' -Quiet) -or
     -not (Select-String -Path $overlayUi -SimpleMatch 'keyPolicyMatrixHead' -Quiet) -or
     -not (Select-String -Path $overlayHtml -SimpleMatch 'overlayDisplayMode' -Quiet)) {
@@ -175,8 +178,8 @@ if (-not (Select-String -Path $captureWorker -SimpleMatch 'RULE-SEC-001 / RULE-S
     -not (Test-Path $securityGate)) {
     throw 'Security Gate、修飾なし英数記号入力、またはRealtime Logのhard invariantが欠落しています。'
 }
-if (-not (Select-String -Path $captureWorker -SimpleMatch 'MainInput::WheelLeft' -Quiet) -or
-    -not (Select-String -Path $captureWorker -SimpleMatch 'MainInput::MouseX1' -Quiet) -or
+if (-not (Select-String -Path $keyNames -SimpleMatch 'MainInput::WheelLeft' -Quiet) -or
+    -not (Select-String -Path $keyNames -SimpleMatch 'MainInput::MouseX1' -Quiet) -or
     -not (Select-String -Path $overlayManager -SimpleMatch 'allowed_positions' -Quiet) -or
     -not (Select-String -Path $overlayManager -SimpleMatch 'preview_sample' -Quiet)) {
     throw 'v0.1.3 horizontal wheel/X buttons/allowed positions/SAMPLE previewが欠落しています。'
