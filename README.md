@@ -4,10 +4,7 @@
 
 対応OS: Windows 10 / 11（64bit）｜現在のリリース: v0.1.5｜ライセンス: MIT
 
-<!--
-README用の画像を追加したら、次のコメントを画像参照へ置き換えてください。
-![ShortcutKeyCounterのダッシュボード](docs/images/users-guide/006-dashboard-overview.png)
--->
+![ShortcutKeyCounterの集計画面](docs/images/readme/01-main.png)
 
 ## 概要
 
@@ -79,6 +76,44 @@ Keyvizのように、入力したキーを画面上へポップアップ表示�
 
 ウィンドウを閉じてもバックエンドは通知領域で動作を続けます。画面の再表示は通知領域アイコンのダブルクリック、完全終了は右クリックメニューの「終了」から行います。
 
+## 画面で見る使い方
+
+以下はv0.1.5の開発ソースを使い、説明用データだけで撮影した画面です。実際の入力履歴ではありません。
+
+### 1. 利用回数を見る
+
+ダッシュボードで回数・利用アプリ・よく使うキーを確認します。期間を切り替えると集計対象が変わります。計測を止めたいときは右上の停止操作を使います。
+
+### 2. 表示を調整する
+
+「設定」でテーマや入力キーの表示位置・表示時間を選びます。入力キーの表示と計測の停止は別の操作です。
+
+![テーマとオーバーレイの設定](docs/images/readme/02-settings.png)
+
+### 3. サンプルで試す
+
+「データ管理」で「検証データベース」に切り替えると、サンプルを生成できます。普段の記録へ戻るときは「本番データベース」を選びます。生成には、元になるアプリ・ショートカットの集計が必要です。
+
+![検証DBへの切替とサンプル生成](docs/images/readme/03-test-data.png)
+
+### 4. 日ごとの傾向を比較する
+
+「使用率グラフ」で期間とキーを選びます。サンプルは前日までの60日分なので、「今日」ではなく「30日」などを選んでください。
+
+![30日間のキー使用率グラフ](docs/images/readme/04-graph.png)
+
+### 5. アプリごとの差を見る
+
+「キー × アプリ見取り図」は、行がキー、列がアプリです。濃いセルほど使用回数が多いことを表します。
+
+![キーとアプリの見取り図](docs/images/readme/05-matrix.png)
+
+### 6. 表示・記録するキーを選ぶ
+
+「キーマッピング」でキー名と修飾キーごとの扱いを変更し、「保存」を押します。安全上記録しない入力は、この設定でも記録対象になりません。
+
+![キーマッピングの編集画面](docs/images/readme/06-key-mapping.png)
+
 ## プライバシーとセキュリティ
 
 保存する情報:
@@ -132,54 +167,7 @@ Security Gateは、オーバーレイ表示、リアルタイムログ、DB記�
 
 ## 開発者向け情報
 
-### 構成
-
-- `apps/shortcut-key-counter`: Tauriメインアプリ
-- `apps/shortcut-key-capture`: 管理者権限アプリ向け入力取得ヘルパー
-- `crates/shortcut-common`: 共通モデル、IPC、パス
-- `crates/shortcut-core`: 判定、正規化、重複抑制
-- `crates/shortcut-storage`: SQLite、Repository、統計、Migration
-- `crates/shortcut-windows`: Win32 Hook、Foreground、Overlay、Elevation
-- `migrations`: SQLite Migration
-- `dev/scripts`: ビルド、テスト、ローカルパッケージ処理
-- `docs`: 利用者・ビルド担当者向け文書
-- `dev`: 現行仕様、実装記録、配布手順、旧版履歴
-- `dev/history/vX.Y.Z/logs/`: 配布成果物・検証ログのローカル控え（Git追跡対象外）
-
-### 必要な環境
-
-- Rust stable
-- Node.js
-- PowerShell 7（`pwsh`）
-- Windows SDKを含むRustのWindowsビルド環境
-
-### ビルド
-
-Releaseビルドだけを行う場合:
-
-```powershell
-pwsh -ExecutionPolicy Bypass -File .\dev\scripts\build-release-ShortcutKeyCounter-all.ps1
-```
-
-自動品質検証をまとめて行う場合:
-
-```powershell
-pwsh -ExecutionPolicy Bypass -File .\dev\scripts\test-release-ShortcutKeyCounter-all.ps1
-```
-
-ZIP生成はビルドと分離されており、既存のRelease成果物に対して `package-ShortcutKeyCounter-zip.ps1` を実行します。
-
-個別に確認する場合:
-
-```powershell
-cargo fmt --all -- --check
-cargo check --workspace --all-targets --all-features
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace --all-features
-pwsh -ExecutionPolicy Bypass -File .\apps\shortcut-key-counter\scripts\build-ui.ps1
-```
-
-詳しくは[開発者ガイド](docs/DEVELOPERS_GUIDE.md)と[ビルド・検証コマンド](docs/BUILD_COMMANDS.md)を参照してください。
+ビルドとテストは[開発者ガイド](docs/DEVELOPERS_GUIDE.md)と[ビルド・検証コマンド](docs/BUILD_COMMANDS.md)を参照してください。
 
 ## ドキュメント
 
