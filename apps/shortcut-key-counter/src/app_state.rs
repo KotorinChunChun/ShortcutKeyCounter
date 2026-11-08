@@ -426,26 +426,21 @@ impl AppState {
             .mapping_edit_session
             .lock()
             .map_err(|_| AppStateError::Poisoned)?;
-        session.begin_busy()?;
-        let values = session.draft()?;
-        let result = save_all_atomic(
-            &crate::key_mapping_state::mapping_path(&self.paths.app_dir),
-            &crate::overlay::config::OverlayPaths {
-                theme_json: self.overlay.theme_path().to_path_buf(),
-                labels_json: self.overlay.labels_path().to_path_buf(),
-                policy_json: self.overlay.policy_path().to_path_buf(),
-                design_directory: self.overlay.design_directory().to_path_buf(),
-            },
-            &values,
-        );
-        if let Err(error) = result {
-            session.end_busy();
-            return Err(error.into());
-        }
-        session.mark_saved()?;
-        session.end_busy();
+        let snapshot = session.save_with(|values| {
+            save_all_atomic(
+                &crate::key_mapping_state::mapping_path(&self.paths.app_dir),
+                &crate::overlay::config::OverlayPaths {
+                    theme_json: self.overlay.theme_path().to_path_buf(),
+                    labels_json: self.overlay.labels_path().to_path_buf(),
+                    policy_json: self.overlay.policy_path().to_path_buf(),
+                    design_directory: self.overlay.design_directory().to_path_buf(),
+                },
+                values,
+            )
+            .map_err(AppStateError::from)
+        })?;
         self.overlay.set_labels_override(None);
-        Ok(session.snapshot())
+        Ok(snapshot)
     }
 
     pub fn cancel_mapping_edit(&self) -> Result<MappingEditSessionSnapshot, AppStateError> {
@@ -453,16 +448,9 @@ impl AppState {
             .mapping_edit_session
             .lock()
             .map_err(|_| AppStateError::Poisoned)?;
-        session.begin_busy()?;
-        let values = session.saved()?;
-        if let Err(error) = self.apply_mapping_runtime(&values) {
-            session.end_busy();
-            return Err(error);
-        }
-        session.restore_saved()?;
-        session.end_busy();
+        let snapshot = session.cancel_with(|values| self.apply_mapping_runtime(values))?;
         self.overlay.set_labels_override(None);
-        Ok(session.snapshot())
+        Ok(snapshot)
     }
 
     pub fn end_mapping_edit(&self) -> Result<MappingEditSessionSnapshot, AppStateError> {

@@ -1,5 +1,6 @@
 //! CSV出力、SQLiteバックアップ、使用データ全削除を提供する。
 
+use std::borrow::Cow;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -433,7 +434,24 @@ where
     writer.write_all(b"\r\n")
 }
 
+/// 表計算ソフトが数式・DDEとして解釈しうる先頭文字。
+/// 日本語環境のExcelは全角の＝＋－＠も数式入力として扱うため含める。
+const FORMULA_TRIGGER_PREFIXES: [char; 10] =
+    ['=', '+', '-', '@', '\t', '\r', '＝', '＋', '－', '＠'];
+
+/// アプリ名は実行ファイル名に由来し任意の文字で始まりうるため、数式として
+/// 解釈されうる値は先頭に `'` を付けて文字列として開かせる（CSV injection対策）。
+fn neutralize_formula(field: &str) -> Cow<'_, str> {
+    if field.starts_with(FORMULA_TRIGGER_PREFIXES) {
+        Cow::Owned(format!("'{field}"))
+    } else {
+        Cow::Borrowed(field)
+    }
+}
+
 fn write_csv_field(writer: &mut impl Write, field: &str) -> Result<(), io::Error> {
+    let field = neutralize_formula(field);
+    let field = field.as_ref();
     if field
         .bytes()
         .any(|byte| matches!(byte, b',' | b'"' | b'\r' | b'\n'))
@@ -530,6 +548,45 @@ mod tests {
         assert!(content.starts_with("date,shortcut,application,count\r\n"));
         assert!(content.contains("2026-08-15,Ctrl+V,\"Code,Test.exe\",1\r\n"));
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn formula_like_values_are_prefixed_with_apostrophe() {
+        for value in [
+            "=SUM(1,2)",
+            "+notepad.exe",
+            "-tool.exe",
+            "@SUM(A1)",
+            "\tTAB.exe",
+            "\rCR.exe",
+            "＝全角.exe",
+            "＋全角.exe",
+            "－全角.exe",
+            "＠全角.exe",
+        ] {
+            assert_eq!(neutralize_formula(value), format!("'{value}"), "{value:?}");
+        }
+        for value in [
+            "Ctrl+C",
+            "Ctrl+Shift+-",
+            "Code.exe",
+            "a=b.exe",
+            "2026-08-15",
+            "12",
+            "",
+        ] {
+            assert_eq!(neutralize_formula(value), value, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn formula_guard_is_applied_before_csv_quoting() {
+        let mut output = Vec::new();
+        write_csv_record(&mut output, ["=HYPERLINK(\"x\",\"y\")", "+1", "Ctrl+C"]).expect("record");
+        assert_eq!(
+            String::from_utf8(output).expect("UTF-8"),
+            "\"'=HYPERLINK(\"\"x\"\",\"\"y\"\")\",'+1,Ctrl+C\r\n"
+        );
     }
 
     #[test]

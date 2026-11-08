@@ -1,35 +1,5 @@
+use crate::key_names::is_modifier_key;
 use crate::model::{MainInput, ModifierState};
-
-// Windows Virtual-Key codes for modifier keys.  Keeping these local avoids
-// coupling the core crate to a Windows-only dependency.
-const VK_SHIFT: u16 = 0x10;
-const VK_CONTROL: u16 = 0x11;
-const VK_MENU: u16 = 0x12;
-const VK_LWIN: u16 = 0x5B;
-const VK_RWIN: u16 = 0x5C;
-const VK_LSHIFT: u16 = 0xA0;
-const VK_RSHIFT: u16 = 0xA1;
-const VK_LCONTROL: u16 = 0xA2;
-const VK_RCONTROL: u16 = 0xA3;
-const VK_LMENU: u16 = 0xA4;
-const VK_RMENU: u16 = 0xA5;
-
-fn is_modifier_key(vk: u16) -> bool {
-    matches!(
-        vk,
-        VK_SHIFT
-            | VK_CONTROL
-            | VK_MENU
-            | VK_LWIN
-            | VK_RWIN
-            | VK_LSHIFT
-            | VK_RSHIFT
-            | VK_LCONTROL
-            | VK_RCONTROL
-            | VK_LMENU
-            | VK_RMENU
-    )
-}
 
 /// 修飾なしでは永続記録しない文字入力系のVirtual-Key。
 /// 英字・数字・OEM記号・テンキーの数字／演算子を対象とする。
@@ -78,11 +48,7 @@ pub fn is_recordable(modifiers: &ModifierState, main_input: &MainInput) -> bool 
             if is_modifier_key(*vk) {
                 return false;
             }
-            modifiers.ctrl
-                || modifiers.alt
-                || modifiers.win
-                || modifiers.shift
-                || !is_unmodified_recording_prohibited(*vk)
+            modifiers.any() || !is_unmodified_recording_prohibited(*vk)
         }
         MainInput::MouseLeft
         | MainInput::MouseRight
