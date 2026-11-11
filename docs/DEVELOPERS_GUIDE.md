@@ -1,6 +1,6 @@
 # 開発者ガイド
 
-ShortcutKeyCounter は Windows 向けの Rust workspace で、Tauri メインアプリ、入力取得ヘルパー、責務別の共通 crate から構成されます。
+ShortcutKeyCounter は Windows 向けの Rust workspace です。Tauri のメインアプリ、入力取得ヘルパー、役割ごとに分けた共通 crate で構成されています。
 
 ## 開発環境
 

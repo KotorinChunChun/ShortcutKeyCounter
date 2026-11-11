@@ -4,7 +4,7 @@
 
 ## Release ビルド
 
-本体連携を含むDebugビルドだけ行う場合は、`pwsh -ExecutionPolicy Bypass -File .\dev\scripts\build-debug-ShortcutKeyCounter-all.ps1`を使います。実行ファイルは`target/debug/`へ生成し、起動・導入・外部公開は行いません。
+本体連携を含むDebugビルドのみを行うには、`pwsh -ExecutionPolicy Bypass -File .\dev\scripts\build-debug-ShortcutKeyCounter-all.ps1`を使います。実行ファイルは`target/debug/`へ生成し、起動・導入・外部公開は行いません。
 
 ```powershell
 pwsh -ExecutionPolicy Bypass -File .\dev\scripts\build-release-ShortcutKeyCounter-all.ps1
