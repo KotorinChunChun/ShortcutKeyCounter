@@ -178,6 +178,12 @@ Security Gateは、オーバーレイ表示、リアルタイムログ、DB記�
 - [Windowsビルド・受入手順](docs/windows-build-and-acceptance.md)
 - [開発資料](dev/README.md)
 
+## 使用言語とライブラリ
+
+- 使用言語はRust、TypeScriptです。
+- Tauri（画面と常駐機能）、rusqlite（SQLiteへの記録）、windows（Windows API）、fontdueとresvg（オーバーレイ描画）。
+- 依存定義と資料 [アプリの依存定義](apps/shortcut-key-counter/Cargo.toml)・[共通依存定義](Cargo.toml)・[第三者ライセンス](docs/third-party-licenses.md)
+
 ## ライセンス
 
 本ソフトウェアは[MIT License](LICENSE.txt)で公開しています。
