@@ -60,6 +60,12 @@ if (-not (Select-String -Path $traySource -SimpleMatch 'capture-state-changed' -
     throw 'Capture状態のTray/WebView同期イベントが欠落しています。'
 }
 
+# Regression gate: Tauri 2 command arguments are camelCase on the JS side.
+# snake_case keys (e.g. start_date) are silently ignored for Option arguments.
+if (Select-String -Path $frontendApi -Pattern "invoke<[^>]*>\('\w+', \{[^}]*\b[a-z]+_[a-z_]+\s*:" -Quiet) {
+    throw 'api.ts のTauri command引数にsnake_caseのキーがあります。Tauri 2ではcamelCaseで渡してください。'
+}
+
 # Regression gate: second launch must be mutex-gated and activate Settings in the existing process.
 $mainSource = Join-Path $Root 'apps\shortcut-key-counter\src\main.rs'
 if (-not (Select-String -Path $mainSource -SimpleMatch 'acquire_or_notify_existing' -Quiet) -or
