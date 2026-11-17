@@ -20,6 +20,7 @@ use crate::app_state::AppState;
 use crate::command_api::{self, SettingsSnapshot};
 use crate::command_error::CommandError;
 use crate::maintenance::downloads_or_fallback;
+use crate::test_mode;
 
 fn parse_date(value: &str) -> Result<NaiveDate, CommandError> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d")
@@ -56,7 +57,15 @@ fn settings_snapshot(state: &AppState) -> Result<SettingsSnapshot, CommandError>
     read_settings(&db)
 }
 
+/// CSV・バックアップ・JSONの出力先。隔離試験中は実際のDownloadsへ書かない。
 fn downloads_directory(error_code: &str) -> Result<PathBuf, CommandError> {
+    if let Some(directory) = test_mode::isolated_downloads_directory() {
+        return std::fs::create_dir_all(&directory)
+            .map(|()| directory)
+            .map_err(|_| {
+                CommandError::new(error_code, "Downloadsフォルダーを取得できませんでした。")
+            });
+    }
     downloads_or_fallback(None)
         .map_err(|_| CommandError::new(error_code, "Downloadsフォルダーを取得できませんでした。"))
 }

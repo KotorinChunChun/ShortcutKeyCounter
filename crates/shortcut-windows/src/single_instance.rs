@@ -57,11 +57,29 @@ impl Drop for SingleInstanceGuard {
 
 /// 最初のプロセスならGuardを返す。既存プロセスがあればactivation eventを通知して返す。
 pub fn acquire_or_notify_existing() -> Result<SingleInstanceStatus, SingleInstanceError> {
+    acquire_or_notify_named(MUTEX_NAME, ACTIVATE_EVENT_NAME)
+}
+
+/// 試験用に、通常版とは別の名前空間で単一起動を判定する。
+/// 通常版が起動していても、その画面をactivationしない。
+pub fn acquire_or_notify_existing_in(
+    namespace: &str,
+) -> Result<SingleInstanceStatus, SingleInstanceError> {
+    acquire_or_notify_named(
+        &format!("{MUTEX_NAME}.{namespace}"),
+        &format!("{ACTIVATE_EVENT_NAME}.{namespace}"),
+    )
+}
+
+fn acquire_or_notify_named(
+    mutex_name: &str,
+    event_name: &str,
+) -> Result<SingleInstanceStatus, SingleInstanceError> {
     // Eventを先に作ることで、ほぼ同時起動でも2個目がactivationを通知できる。
-    let event_name = wide_null(ACTIVATE_EVENT_NAME);
+    let event_name = wide_null(event_name);
     let event = unsafe { CreateEventW(None, false, false, PCWSTR(event_name.as_ptr())) }?;
 
-    let mutex_name = wide_null(MUTEX_NAME);
+    let mutex_name = wide_null(mutex_name);
     let mutex = match unsafe { CreateMutexW(None, false, PCWSTR(mutex_name.as_ptr())) } {
         Ok(mutex) => mutex,
         Err(error) => {

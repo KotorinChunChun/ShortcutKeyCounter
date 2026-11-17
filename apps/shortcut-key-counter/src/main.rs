@@ -4,13 +4,15 @@ use std::thread;
 
 use shortcut_key_counter::app_state::AppState;
 use shortcut_key_counter::tauri_commands;
+use shortcut_key_counter::test_mode;
 use shortcut_key_counter::tray::setup_tray;
 use shortcut_key_counter::window_manager::{
     destroy_main_window, notify_mapping_unsaved_blocked, request_show_main_window,
     request_show_settings_window, should_prevent_process_exit, MAIN_WINDOW_LABEL,
 };
 use shortcut_windows::single_instance::{
-    acquire_or_notify_existing, wait_for_activation, SingleInstanceStatus,
+    acquire_or_notify_existing, acquire_or_notify_existing_in, wait_for_activation,
+    SingleInstanceStatus,
 };
 use tauri::tray::{MouseButton, TrayIconEvent};
 use tauri::{Emitter, Manager};
@@ -26,12 +28,16 @@ fn hide_on_start(arguments: impl IntoIterator<Item = String>) -> bool {
 fn main() {
     // Mutexをbackend初期化より前に取得する。2個目はHook/DBを二重起動せず、
     // 既存processへ「設定画面を表示」を通知して即終了する。
-    let instance_guard = match acquire_or_notify_existing()
-        .expect("ShortcutKeyCounter single-instance initialization failed")
-    {
-        SingleInstanceStatus::ExistingNotified => return,
-        SingleInstanceStatus::Primary(guard) => guard,
+    // 隔離試験は通常版と別の名前空間で判定し、起動中の通常版を前面へ呼び出さない。
+    let single_instance = match test_mode::isolated_root() {
+        Some(root) => acquire_or_notify_existing_in(&test_mode::single_instance_namespace(&root)),
+        None => acquire_or_notify_existing(),
     };
+    let instance_guard =
+        match single_instance.expect("ShortcutKeyCounter single-instance initialization failed") {
+            SingleInstanceStatus::ExistingNotified => return,
+            SingleInstanceStatus::Primary(guard) => guard,
+        };
     let activation_event = instance_guard.activation_event_value();
     let start_hidden = hide_on_start(std::env::args().skip(1));
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -43,7 +49,10 @@ fn main() {
         .manage(state)
         .setup(move |app| {
             setup_tray(app)?;
-            shortcut_key_counter::management::start(app.handle().clone(), origin.clone())?;
+            // 本体管理窓口のpipe名は通常版と共有のため、隔離試験では作らない。
+            if !test_mode::is_isolated() {
+                shortcut_key_counter::management::start(app.handle().clone(), origin.clone())?;
+            }
 
             // Capture workerがリアルタイムログへ1件追加するたびにWebViewへ通知する。
             // UIが閉じている間もログ自体はring bufferへ蓄積される。

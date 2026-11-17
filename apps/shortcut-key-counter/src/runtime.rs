@@ -77,8 +77,7 @@ impl CaptureRuntime {
     /// DB初期化完了後にworker、local hooks、power monitorを順に起動する。
     pub fn start() -> Result<(Self, AppPaths), RuntimeError> {
         #[cfg(debug_assertions)]
-        if let Some(root) = std::env::var_os("SHORTCUT_KEY_COUNTER_TEST_LOCALAPPDATA") {
-            let root = std::path::PathBuf::from(root);
+        if let Some(root) = crate::test_mode::isolated_root() {
             if !root.is_absolute() {
                 return Err(StartupError::Paths(
                     shortcut_windows::known_folders::KnownFoldersError::DirectoryCreation(
@@ -174,9 +173,7 @@ impl CaptureRuntime {
             shared.clone(),
         )?;
         // Debugの明示的な隔離試験では本番保存先、Run同期、入力Hookを使用しない。
-        let isolated_test = cfg!(debug_assertions)
-            && std::env::var_os("SHORTCUT_KEY_COUNTER_TEST_LOCALAPPDATA").is_some();
-        let capture = if isolated_test {
+        let capture = if crate::test_mode::is_isolated() {
             shared
                 .capture_gate
                 .store(false, std::sync::atomic::Ordering::Release);
