@@ -9,6 +9,8 @@ use std::thread;
 
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Wry};
 
+use crate::test_mode;
+
 pub const MAIN_WINDOW_LABEL: &str = "main";
 static SHOW_REQUEST_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 static PENDING_PAGE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
@@ -31,9 +33,11 @@ pub fn request_show_key_mapping_window(app: &AppHandle<Wry>) {
 
 pub fn notify_mapping_unsaved_blocked(app: &AppHandle<Wry>) {
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        let _ = window.show();
-        let _ = window.unminimize();
-        let _ = window.set_focus();
+        if !test_mode::background_ui() {
+            let _ = window.show();
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
         let _ = app.emit_to(MAIN_WINDOW_LABEL, "mapping-unsaved-blocked", ());
     } else {
         request_show_key_mapping_window(app);
@@ -86,10 +90,14 @@ fn request_show_main_window_page(app: &AppHandle<Wry>, page: Option<&str>) {
 
 /// event handler外から呼ぶ実際の生成処理。
 pub fn show_main_window(app: &AppHandle<Wry>, page: Option<&str>) -> tauri::Result<()> {
+    // 背景UI試験ではWebViewだけを動かし、表示・アクティブ化・タスクバー追加をしない。
+    let background = test_mode::background_ui();
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
-        window.show()?;
-        let _ = window.unminimize();
-        window.set_focus()?;
+        if !background {
+            window.show()?;
+            let _ = window.unminimize();
+            window.set_focus()?;
+        }
         if let Some(page) = page {
             let _ = app.emit_to(MAIN_WINDOW_LABEL, "navigate-page", page);
         }
@@ -111,8 +119,18 @@ pub fn show_main_window(app: &AppHandle<Wry>, page: Option<&str>) -> tauri::Resu
         ));
     }
 
+    // 隔離試験ではWebView2のprofileも隔離rootに置き、通常版のprofileを使わない。
+    if let Some(root) = test_mode::isolated_root() {
+        builder = builder.data_directory(root.join("EBWebView"));
+    }
+    if background {
+        builder = builder.visible(false).focused(false).skip_taskbar(true);
+    }
+
     let window = builder.build()?;
-    window.set_focus()?;
+    if !background {
+        window.set_focus()?;
+    }
     Ok(())
 }
 

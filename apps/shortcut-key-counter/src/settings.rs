@@ -51,12 +51,7 @@ pub fn set_overlay_enabled(
     connection: &rusqlite::Connection,
     enabled: bool,
 ) -> Result<(), SettingsError> {
-    set_setting(
-        connection,
-        OVERLAY_ENABLED_KEY,
-        if enabled { "true" } else { "false" },
-    )?;
-    Ok(())
+    set_boolean_setting(connection, OVERLAY_ENABLED_KEY, enabled)
 }
 
 pub fn get_usage_tracking_enabled(
@@ -69,12 +64,7 @@ pub fn set_usage_tracking_enabled(
     connection: &rusqlite::Connection,
     enabled: bool,
 ) -> Result<(), SettingsError> {
-    set_setting(
-        connection,
-        USAGE_TRACKING_ENABLED_KEY,
-        if enabled { "true" } else { "false" },
-    )?;
-    Ok(())
+    set_boolean_setting(connection, USAGE_TRACKING_ENABLED_KEY, enabled)
 }
 
 pub fn get_duplicate_guard_seconds(
@@ -258,24 +248,14 @@ pub fn set_auto_start(
     } else {
         disable_autostart()?;
     }
-    set_setting(
-        connection,
-        AUTO_START_KEY,
-        if enabled { "true" } else { "false" },
-    )?;
-    Ok(())
+    set_boolean_setting(connection, AUTO_START_KEY, enabled)
 }
 
 pub fn set_capture_elevated(
     connection: &rusqlite::Connection,
     enabled: bool,
 ) -> Result<(), SettingsError> {
-    set_setting(
-        connection,
-        CAPTURE_ELEVATED_KEY,
-        if enabled { "true" } else { "false" },
-    )?;
-    Ok(())
+    set_boolean_setting(connection, CAPTURE_ELEVATED_KEY, enabled)
 }
 
 /// 起動時にauto_start設定と現在のexeパスをRunキーへ同期する。
@@ -292,6 +272,16 @@ pub fn synchronize_auto_start(
     } else if read_autostart_command()?.is_some() {
         disable_autostart()?;
     }
+    Ok(())
+}
+
+/// `get_boolean_setting`が読める`true`/`false`で保存する。
+fn set_boolean_setting(
+    connection: &rusqlite::Connection,
+    key: &str,
+    value: bool,
+) -> Result<(), SettingsError> {
+    set_setting(connection, key, if value { "true" } else { "false" })?;
     Ok(())
 }
 

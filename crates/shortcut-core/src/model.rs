@@ -10,6 +10,13 @@ pub struct ModifierState {
     pub shift: bool,
 }
 
+impl ModifierState {
+    /// Ctrl / Alt / Win / Shift のいずれかが押されているか。
+    pub fn any(&self) -> bool {
+        self.ctrl || self.alt || self.win || self.shift
+    }
+}
+
 /// ショートカットの主入力。
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum MainInput {
@@ -23,6 +30,16 @@ pub enum MainInput {
     WheelDown,
     WheelLeft,
     WheelRight,
+}
+
+impl MainInput {
+    /// 上下左右いずれかのホイール入力か。
+    pub fn is_wheel(&self) -> bool {
+        matches!(
+            self,
+            Self::WheelUp | Self::WheelDown | Self::WheelLeft | Self::WheelRight
+        )
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]

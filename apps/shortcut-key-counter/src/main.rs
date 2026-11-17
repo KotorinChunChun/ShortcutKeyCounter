@@ -4,13 +4,15 @@ use std::thread;
 
 use shortcut_key_counter::app_state::AppState;
 use shortcut_key_counter::tauri_commands;
+use shortcut_key_counter::test_mode;
 use shortcut_key_counter::tray::setup_tray;
 use shortcut_key_counter::window_manager::{
     destroy_main_window, notify_mapping_unsaved_blocked, request_show_main_window,
     request_show_settings_window, should_prevent_process_exit, MAIN_WINDOW_LABEL,
 };
 use shortcut_windows::single_instance::{
-    acquire_or_notify_existing, wait_for_activation, SingleInstanceStatus,
+    acquire_or_notify_existing, acquire_or_notify_existing_in, wait_for_activation,
+    SingleInstanceStatus,
 };
 use tauri::tray::{MouseButton, TrayIconEvent};
 use tauri::{Emitter, Manager};
@@ -26,12 +28,16 @@ fn hide_on_start(arguments: impl IntoIterator<Item = String>) -> bool {
 fn main() {
     // Mutexをbackend初期化より前に取得する。2個目はHook/DBを二重起動せず、
     // 既存processへ「設定画面を表示」を通知して即終了する。
-    let instance_guard = match acquire_or_notify_existing()
-        .expect("ShortcutKeyCounter single-instance initialization failed")
-    {
-        SingleInstanceStatus::ExistingNotified => return,
-        SingleInstanceStatus::Primary(guard) => guard,
+    // 隔離試験は通常版と別の名前空間で判定し、起動中の通常版を前面へ呼び出さない。
+    let single_instance = match test_mode::isolated_root() {
+        Some(root) => acquire_or_notify_existing_in(&test_mode::single_instance_namespace(&root)),
+        None => acquire_or_notify_existing(),
     };
+    let instance_guard =
+        match single_instance.expect("ShortcutKeyCounter single-instance initialization failed") {
+            SingleInstanceStatus::ExistingNotified => return,
+            SingleInstanceStatus::Primary(guard) => guard,
+        };
     let activation_event = instance_guard.activation_event_value();
     let start_hidden = hide_on_start(std::env::args().skip(1));
     let arguments: Vec<String> = std::env::args().skip(1).collect();
@@ -43,7 +49,10 @@ fn main() {
         .manage(state)
         .setup(move |app| {
             setup_tray(app)?;
-            shortcut_key_counter::management::start(app.handle().clone(), origin.clone())?;
+            // 本体管理窓口のpipe名は通常版と共有のため、隔離試験では作らない。
+            if !test_mode::is_isolated() {
+                shortcut_key_counter::management::start(app.handle().clone(), origin.clone())?;
+            }
 
             // Capture workerがリアルタイムログへ1件追加するたびにWebViewへ通知する。
             // UIが閉じている間もログ自体はring bufferへ蓄積される。
@@ -122,91 +131,91 @@ fn main() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            tauri_commands::get_capture_status,
-            tauri_commands::set_capture_enabled,
-            tauri_commands::get_capture_health,
-            tauri_commands::get_dashboard_summary,
-            tauri_commands::get_shortcut_ranking,
-            tauri_commands::get_shortcut_ranking_extended,
-            tauri_commands::get_application_ranking,
-            tauri_commands::get_application_statistics,
-            tauri_commands::get_daily_trend,
-            tauri_commands::get_hourly_trend,
-            tauri_commands::get_shortcut_detail,
-            tauri_commands::list_shortcuts,
-            tauri_commands::get_data_bounds,
-            tauri_commands::get_rankings_v014,
-            tauri_commands::get_usage_graph_v014,
-            tauri_commands::get_usage_graph_colors,
-            tauri_commands::set_usage_graph_colors,
-            tauri_commands::get_excluded_apps,
-            tauri_commands::add_excluded_app,
-            tauri_commands::set_excluded_app_enabled,
-            tauri_commands::remove_user_excluded_app,
-            tauri_commands::get_settings,
-            tauri_commands::set_auto_start,
-            tauri_commands::set_theme,
-            tauri_commands::set_usage_tracking,
-            tauri_commands::set_duplicate_guard_seconds,
-            tauri_commands::set_detail_event_retention_days,
-            tauri_commands::preview_overlay_sample,
-            tauri_commands::begin_key_search,
-            tauri_commands::poll_key_search,
-            tauri_commands::cancel_key_search,
-            tauri_commands::set_overlay_enabled,
-            tauri_commands::get_overlay_settings,
-            tauri_commands::preview_overlay_settings,
-            tauri_commands::get_overlay_monitors,
-            tauri_commands::preview_overlay_monitor,
-            tauri_commands::set_overlay_settings,
-            tauri_commands::reset_overlay_appearance,
-            tauri_commands::get_overlay_key_labels,
-            tauri_commands::set_overlay_key_labels,
-            tauri_commands::set_overlay_keyboard_layout,
-            tauri_commands::set_overlay_keyboard_input_mode,
-            tauri_commands::list_mapping_profiles,
-            tauri_commands::save_mapping_profile,
-            tauri_commands::delete_mapping_profile,
-            tauri_commands::rename_mapping_profile,
-            tauri_commands::get_overlay_key_policy,
-            tauri_commands::set_overlay_key_policy,
-            tauri_commands::reload_overlay_assets,
-            tauri_commands::set_capture_elevated,
-            tauri_commands::get_database_environment,
-            tauri_commands::switch_database_environment,
-            tauri_commands::get_sample_source_status,
-            tauri_commands::generate_sample_data,
-            tauri_commands::preview_delete_yesterday_and_earlier,
-            tauri_commands::delete_yesterday_and_earlier,
-            tauri_commands::export_daily_csv,
-            tauri_commands::get_daily_export_filter,
-            tauri_commands::set_daily_export_filter,
-            tauri_commands::export_events_csv,
-            tauri_commands::backup_database,
-            tauri_commands::delete_all_statistics,
-            tauri_commands::get_app_paths,
-            tauri_commands::open_data_folder,
-            tauri_commands::open_overlay_labels,
-            tauri_commands::open_overlay_theme,
-            tauri_commands::open_overlay_policy,
-            tauri_commands::open_overlay_design_folder,
-            tauri_commands::open_parent_folder,
-            tauri_commands::get_key_mapping,
-            tauri_commands::set_key_mapping,
-            tauri_commands::begin_mapping_edit_session,
-            tauri_commands::get_mapping_edit_session,
-            tauri_commands::apply_mapping_edit_draft,
-            tauri_commands::apply_mapping_edit_layout,
-            tauri_commands::apply_mapping_edit_input_mode,
-            tauri_commands::save_mapping_edit_session,
-            tauri_commands::cancel_mapping_edit_session,
-            tauri_commands::end_mapping_edit_session,
-            tauri_commands::mapping_edit_session_status,
-            tauri_commands::export_key_mapping_json,
-            tauri_commands::get_realtime_logs,
-            tauri_commands::clear_realtime_logs,
-            tauri_commands::get_app_info,
-            tauri_commands::open_external_url,
+            tauri_commands::capture::get_capture_status,
+            tauri_commands::capture::set_capture_enabled,
+            tauri_commands::capture::get_capture_health,
+            tauri_commands::statistics::get_dashboard_summary,
+            tauri_commands::statistics::get_shortcut_ranking,
+            tauri_commands::statistics::get_shortcut_ranking_extended,
+            tauri_commands::statistics::get_application_ranking,
+            tauri_commands::statistics::get_application_statistics,
+            tauri_commands::statistics::get_daily_trend,
+            tauri_commands::statistics::get_hourly_trend,
+            tauri_commands::statistics::get_shortcut_detail,
+            tauri_commands::statistics::list_shortcuts,
+            tauri_commands::statistics::get_data_bounds,
+            tauri_commands::statistics::get_rankings_v014,
+            tauri_commands::statistics::get_usage_graph_v014,
+            tauri_commands::statistics::get_usage_graph_colors,
+            tauri_commands::statistics::set_usage_graph_colors,
+            tauri_commands::settings::get_excluded_apps,
+            tauri_commands::settings::add_excluded_app,
+            tauri_commands::settings::set_excluded_app_enabled,
+            tauri_commands::settings::remove_user_excluded_app,
+            tauri_commands::settings::get_settings,
+            tauri_commands::settings::set_auto_start,
+            tauri_commands::settings::set_theme,
+            tauri_commands::settings::set_usage_tracking,
+            tauri_commands::settings::set_duplicate_guard_seconds,
+            tauri_commands::settings::set_detail_event_retention_days,
+            tauri_commands::overlay::preview_overlay_sample,
+            tauri_commands::mapping::begin_key_search,
+            tauri_commands::mapping::poll_key_search,
+            tauri_commands::mapping::cancel_key_search,
+            tauri_commands::overlay::set_overlay_enabled,
+            tauri_commands::overlay::get_overlay_settings,
+            tauri_commands::overlay::preview_overlay_settings,
+            tauri_commands::overlay::get_overlay_monitors,
+            tauri_commands::overlay::preview_overlay_monitor,
+            tauri_commands::overlay::set_overlay_settings,
+            tauri_commands::overlay::reset_overlay_appearance,
+            tauri_commands::overlay::get_overlay_key_labels,
+            tauri_commands::overlay::set_overlay_key_labels,
+            tauri_commands::overlay::set_overlay_keyboard_layout,
+            tauri_commands::overlay::set_overlay_keyboard_input_mode,
+            tauri_commands::mapping::list_mapping_profiles,
+            tauri_commands::mapping::save_mapping_profile,
+            tauri_commands::mapping::delete_mapping_profile,
+            tauri_commands::mapping::rename_mapping_profile,
+            tauri_commands::overlay::get_overlay_key_policy,
+            tauri_commands::overlay::set_overlay_key_policy,
+            tauri_commands::overlay::reload_overlay_assets,
+            tauri_commands::capture::set_capture_elevated,
+            tauri_commands::data::get_database_environment,
+            tauri_commands::data::switch_database_environment,
+            tauri_commands::data::get_sample_source_status,
+            tauri_commands::data::generate_sample_data,
+            tauri_commands::data::preview_delete_yesterday_and_earlier,
+            tauri_commands::data::delete_yesterday_and_earlier,
+            tauri_commands::data::export_daily_csv,
+            tauri_commands::data::get_daily_export_filter,
+            tauri_commands::data::set_daily_export_filter,
+            tauri_commands::data::export_events_csv,
+            tauri_commands::data::backup_database,
+            tauri_commands::data::delete_all_statistics,
+            tauri_commands::data::get_app_paths,
+            tauri_commands::data::open_data_folder,
+            tauri_commands::overlay::open_overlay_labels,
+            tauri_commands::overlay::open_overlay_theme,
+            tauri_commands::overlay::open_overlay_policy,
+            tauri_commands::overlay::open_overlay_design_folder,
+            tauri_commands::data::open_parent_folder,
+            tauri_commands::mapping::get_key_mapping,
+            tauri_commands::mapping::set_key_mapping,
+            tauri_commands::mapping::begin_mapping_edit_session,
+            tauri_commands::mapping::get_mapping_edit_session,
+            tauri_commands::mapping::apply_mapping_edit_draft,
+            tauri_commands::mapping::apply_mapping_edit_layout,
+            tauri_commands::mapping::apply_mapping_edit_input_mode,
+            tauri_commands::mapping::save_mapping_edit_session,
+            tauri_commands::mapping::cancel_mapping_edit_session,
+            tauri_commands::mapping::end_mapping_edit_session,
+            tauri_commands::mapping::mapping_edit_session_status,
+            tauri_commands::mapping::export_key_mapping_json,
+            tauri_commands::app::get_realtime_logs,
+            tauri_commands::app::clear_realtime_logs,
+            tauri_commands::app::get_app_info,
+            tauri_commands::app::open_external_url,
         ])
         .build(tauri::generate_context!())
         .expect("error while building ShortcutKeyCounter");

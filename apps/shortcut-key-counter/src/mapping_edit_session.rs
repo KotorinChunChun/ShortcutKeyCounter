@@ -198,6 +198,39 @@ impl MappingEditSession {
     pub fn is_dirty(&self) -> bool {
         matches!((&self.saved, &self.draft), (Some(saved), Some(draft)) if saved != draft)
     }
+
+    /// draftを`persist`で保存し、成功した場合だけsavedへ確定する。
+    /// 保存に失敗した場合はsaved/draftを変えず、dirtyのまま未保存ガードを維持する。
+    pub fn save_with<E: From<MappingEditError>>(
+        &mut self,
+        persist: impl FnOnce(&MappingEditValues) -> Result<(), E>,
+    ) -> Result<MappingEditSessionSnapshot, E> {
+        self.begin_busy()?;
+        let values = self.draft()?;
+        if let Err(error) = persist(&values) {
+            self.end_busy();
+            return Err(error);
+        }
+        self.mark_saved()?;
+        self.end_busy();
+        Ok(self.snapshot())
+    }
+
+    /// savedを`apply`でruntimeへ戻し、成功した場合だけdraftを破棄する。
+    pub fn cancel_with<E: From<MappingEditError>>(
+        &mut self,
+        apply: impl FnOnce(&MappingEditValues) -> Result<(), E>,
+    ) -> Result<MappingEditSessionSnapshot, E> {
+        self.begin_busy()?;
+        let values = self.saved()?;
+        if let Err(error) = apply(&values) {
+            self.end_busy();
+            return Err(error);
+        }
+        self.restore_saved()?;
+        self.end_busy();
+        Ok(self.snapshot())
+    }
 }
 
 #[derive(Clone, Copy)]

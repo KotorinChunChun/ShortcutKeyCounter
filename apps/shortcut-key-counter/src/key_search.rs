@@ -5,8 +5,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use shortcut_core::key_names::normalize_single_key;
-use shortcut_core::model::{CapturedInput, MainInput};
+use shortcut_core::key_names::main_input_name;
+use shortcut_core::model::CapturedInput;
 
 #[derive(Default)]
 struct KeySearchInner {
@@ -47,7 +47,7 @@ impl KeySearchCapture {
         if !inner.armed {
             return false;
         }
-        if let Some(identity) = main_input_identity(&input.main_input) {
+        if let Ok(identity) = main_input_name(&input.main_input) {
             inner.result = Some(identity);
             inner.armed = false;
         }
@@ -55,26 +55,11 @@ impl KeySearchCapture {
     }
 }
 
-fn main_input_identity(input: &MainInput) -> Option<String> {
-    Some(match input {
-        MainInput::Key(vk) => normalize_single_key(u32::from(*vk))?,
-        MainInput::MouseLeft => "MouseLeft".to_owned(),
-        MainInput::MouseRight => "MouseRight".to_owned(),
-        MainInput::MouseMiddle => "MouseMiddle".to_owned(),
-        MainInput::MouseX1 => "MouseX1".to_owned(),
-        MainInput::MouseX2 => "MouseX2".to_owned(),
-        MainInput::WheelUp => "WheelUp".to_owned(),
-        MainInput::WheelDown => "WheelDown".to_owned(),
-        MainInput::WheelLeft => "WheelLeft".to_owned(),
-        MainInput::WheelRight => "WheelRight".to_owned(),
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use chrono::NaiveDate;
-    use shortcut_core::model::ModifierState;
+    use shortcut_core::model::{MainInput, ModifierState};
 
     fn input(main_input: MainInput) -> CapturedInput {
         CapturedInput {

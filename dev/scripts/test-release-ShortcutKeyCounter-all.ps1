@@ -28,11 +28,16 @@ foreach ($command in @('cargo', 'rustc', 'node')) {
 & pwsh -ExecutionPolicy Bypass -File '.\apps\shortcut-key-counter\scripts\build-ui.ps1'
 if ($LASTEXITCODE -ne 0) { throw 'UI build failed.' }
 
+# Tauri commands are split by domain under tauri_commands/. Gates scan every file there.
+$tauriCommands = @(Get-ChildItem (Join-Path $Root 'apps\shortcut-key-counter\src\tauri_commands') -Filter '*.rs' | ForEach-Object FullName)
+if ($tauriCommands.Count -eq 0) {
+    throw 'apps\shortcut-key-counter\src\tauri_commands\ にTauri commandのソースが見つかりません。'
+}
+
 # Regression gate: Tauri command must bind MutexGuard before passing &Connection.
 # Direct `&db_lock(&state)?` caused E0308 (expected Connection, found MutexGuard).
-$tauriCommands = Join-Path $Root 'apps\shortcut-key-counter\src\tauri_commands.rs'
 if (Select-String -Path $tauriCommands -SimpleMatch '&db_lock(&state)?' -Quiet) {
-    throw 'tauri_commands.rs に禁止パターン &db_lock(&state)? が残っています。let db = db_lock(&state)?; の後に &db を渡してください。'
+    throw 'tauri_commands/ に禁止パターン &db_lock(&state)? が残っています。let db = db_lock(&state)?; の後に &db を渡してください。'
 }
 
 # Regression gate: Windows logon autostart must be tray-only via -hide.
@@ -53,6 +58,12 @@ $frontendApi = Join-Path $Root 'apps\shortcut-key-counter\ui\src\api.ts'
 if (-not (Select-String -Path $traySource -SimpleMatch 'capture-state-changed' -Quiet) -or
     -not (Select-String -Path $frontendApi -SimpleMatch 'capture-state-changed' -Quiet)) {
     throw 'Capture状態のTray/WebView同期イベントが欠落しています。'
+}
+
+# Regression gate: Tauri 2 command arguments are camelCase on the JS side.
+# snake_case keys (e.g. start_date) are silently ignored for Option arguments.
+if (Select-String -Path $frontendApi -Pattern "invoke<[^>]*>\('\w+', \{[^}]*\b[a-z]+_[a-z_]+\s*:" -Quiet) {
+    throw 'api.ts のTauri command引数にsnake_caseのキーがあります。Tauri 2ではcamelCaseで渡してください。'
 }
 
 # Regression gate: second launch must be mutex-gated and activate Settings in the existing process.
@@ -117,6 +128,8 @@ $overlayConfig = Join-Path $Root 'apps\shortcut-key-counter\src\overlay\config.r
 $overlayManager = Join-Path $Root 'apps\shortcut-key-counter\src\overlay\manager.rs'
 $overlayWindow = Join-Path $Root 'crates\shortcut-windows\src\overlay_window.rs'
 $captureWorker = Join-Path $Root 'apps\shortcut-key-counter\src\capture_worker.rs'
+# MainInputの入力名変換はcapture_worker/key_search/normalizerで共有するためcoreに置く。
+$keyNames = Join-Path $Root 'crates\shortcut-core\src\key_names.rs'
 if (-not (Select-String -Path $overlayConfig -SimpleMatch 'display_duration_ms' -Quiet) -or
     -not (Select-String -Path $overlayConfig -SimpleMatch 'enter_ms: 160' -Quiet) -or
     -not (Select-String -Path $overlayConfig -SimpleMatch 'exit_ms: 400' -Quiet) -or
@@ -152,7 +165,8 @@ if (-not (Select-String -Path $overlayConfig -SimpleMatch 'OverlayDisplayMode' -
     -not (Select-String -Path $overlayManager -SimpleMatch 'append_or_create_continuation' -Quiet) -or
     -not (Select-String -Path $overlayWindow -SimpleMatch 'available_monitors' -Quiet) -or
     -not (Select-String -Path $overlayWindow -SimpleMatch 'set_display_target' -Quiet) -or
-    -not (Select-String -Path $captureWorker -SimpleMatch 'MouseMiddle' -Quiet) -or
+    -not (Select-String -Path $captureWorker -SimpleMatch 'main_input_name(&input.main_input)' -Quiet) -or
+    -not (Select-String -Path $keyNames -SimpleMatch 'MainInput::MouseMiddle' -Quiet) -or
     -not (Select-String -Path $overlayTypes -SimpleMatch 'OverlayDisplayMode' -Quiet) -or
     -not (Select-String -Path $overlayUi -SimpleMatch 'keyPolicyMatrixHead' -Quiet) -or
     -not (Select-String -Path $overlayHtml -SimpleMatch 'overlayDisplayMode' -Quiet)) {
@@ -175,8 +189,8 @@ if (-not (Select-String -Path $captureWorker -SimpleMatch 'RULE-SEC-001 / RULE-S
     -not (Test-Path $securityGate)) {
     throw 'Security Gate、修飾なし英数記号入力、またはRealtime Logのhard invariantが欠落しています。'
 }
-if (-not (Select-String -Path $captureWorker -SimpleMatch 'MainInput::WheelLeft' -Quiet) -or
-    -not (Select-String -Path $captureWorker -SimpleMatch 'MainInput::MouseX1' -Quiet) -or
+if (-not (Select-String -Path $keyNames -SimpleMatch 'MainInput::WheelLeft' -Quiet) -or
+    -not (Select-String -Path $keyNames -SimpleMatch 'MainInput::MouseX1' -Quiet) -or
     -not (Select-String -Path $overlayManager -SimpleMatch 'allowed_positions' -Quiet) -or
     -not (Select-String -Path $overlayManager -SimpleMatch 'preview_sample' -Quiet)) {
     throw 'v0.1.3 horizontal wheel/X buttons/allowed positions/SAMPLE previewが欠落しています。'

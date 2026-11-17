@@ -1,3 +1,5 @@
+use crate::model::MainInput;
+
 /// Windows Virtual-Key codeを、入力文字列を生成せずに安定した表示名へ変換する。
 pub fn key_name(vk: u16) -> Option<String> {
     let name = match vk {
@@ -101,6 +103,24 @@ pub fn key_name(vk: u16) -> Option<String> {
     };
 
     Some(name.to_owned())
+}
+
+/// 主入力を、Modifierを含まない安定した入力名へ変換する。
+/// 名前を持たないVirtual-Keyは `Err` でそのcodeを返す。
+pub fn main_input_name(input: &MainInput) -> Result<String, u16> {
+    let name = match input {
+        MainInput::Key(vk) => return key_name(*vk).ok_or(*vk),
+        MainInput::MouseLeft => "MouseLeft",
+        MainInput::MouseRight => "MouseRight",
+        MainInput::MouseMiddle => "MouseMiddle",
+        MainInput::MouseX1 => "MouseX1",
+        MainInput::MouseX2 => "MouseX2",
+        MainInput::WheelUp => "WheelUp",
+        MainInput::WheelDown => "WheelDown",
+        MainInput::WheelLeft => "WheelLeft",
+        MainInput::WheelRight => "WheelRight",
+    };
+    Ok(name.to_owned())
 }
 
 /// 単独キー表示用の正規化。Virtual-Key値を文字入力へ変換せず、既存の安定したキー名を
@@ -207,5 +227,26 @@ mod tests {
         assert_eq!(key_name(0xE2), Some("Oem102".to_owned()));
         assert!(key_catalog().iter().any(|(vk, _)| *vk == 0xBA));
         assert!(key_catalog().iter().any(|(vk, _)| *vk == 0xB3));
+    }
+
+    #[test]
+    fn main_input_name_covers_keys_and_pointer_inputs() {
+        assert_eq!(main_input_name(&MainInput::Key(0x41)), Ok("A".to_owned()));
+        assert_eq!(main_input_name(&MainInput::Key(0x07)), Err(0x07));
+        assert_eq!(main_input_name(&MainInput::Key(0x11)), Err(0x11));
+        let pointers = [
+            (MainInput::MouseLeft, "MouseLeft"),
+            (MainInput::MouseRight, "MouseRight"),
+            (MainInput::MouseMiddle, "MouseMiddle"),
+            (MainInput::MouseX1, "MouseX1"),
+            (MainInput::MouseX2, "MouseX2"),
+            (MainInput::WheelUp, "WheelUp"),
+            (MainInput::WheelDown, "WheelDown"),
+            (MainInput::WheelLeft, "WheelLeft"),
+            (MainInput::WheelRight, "WheelRight"),
+        ];
+        for (input, name) in pointers {
+            assert_eq!(main_input_name(&input), Ok(name.to_owned()));
+        }
     }
 }

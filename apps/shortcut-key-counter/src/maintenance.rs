@@ -1,5 +1,6 @@
 //! CSV出力、SQLiteバックアップ、使用データ全削除を提供する。
 
+use std::borrow::Cow;
 use std::fs::{self, File};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -143,63 +144,58 @@ fn export_daily_csv_at(
     let path = output_directory.join(filename);
     let rows = write_export_file(&path, |writer| {
         write_csv_record(writer, ["date", "shortcut", "application", "count"])?;
+        // アプリを1つも選ばない場合はヘッダーだけを出力する（全件出力にはしない）。
+        let Some((sql, values)) = daily_export_query(applications, start_date, end_date) else {
+            return Ok(0);
+        };
         let mut row_count = 0_u64;
-        match applications {
-            Some([]) => {}
-            Some(applications) => {
-                let mut conditions = Vec::new();
-                let mut values = Vec::new();
-                if let Some(start) = start_date {
-                    conditions.push("date >= ?".to_owned());
-                    values.push(start.to_string());
-                }
-                if let Some(end) = end_date {
-                    conditions.push("date <= ?".to_owned());
-                    values.push(end.to_string());
-                }
-                let placeholders = std::iter::repeat_n("?", applications.len())
-                    .collect::<Vec<_>>()
-                    .join(",");
-                conditions.push(format!("application IN ({placeholders})"));
-                values.extend(applications.iter().cloned());
-                let sql = format!(
-                    "SELECT date, shortcut, application, count FROM shortcut_daily WHERE {} ORDER BY date ASC, shortcut ASC, application ASC",
-                    conditions.join(" AND ")
-                );
-                let mut statement = connection.prepare(&sql)?;
-                let mut result_rows = statement.query(rusqlite::params_from_iter(values.iter()))?;
-                while let Some(row) = result_rows.next()? {
-                    write_daily_row(writer, row)?;
-                    row_count += 1;
-                }
-            }
-            None => {
-                let mut conditions = Vec::new();
-                let mut values = Vec::new();
-                if let Some(start) = start_date {
-                    conditions.push("date >= ?".to_owned());
-                    values.push(start.to_string());
-                }
-                if let Some(end) = end_date {
-                    conditions.push("date <= ?".to_owned());
-                    values.push(end.to_string());
-                }
-                let sql = if conditions.is_empty() {
-                    "SELECT date, shortcut, application, count FROM shortcut_daily ORDER BY date ASC, shortcut ASC, application ASC".to_owned()
-                } else {
-                    format!("SELECT date, shortcut, application, count FROM shortcut_daily WHERE {} ORDER BY date ASC, shortcut ASC, application ASC", conditions.join(" AND "))
-                };
-                let mut statement = connection.prepare(&sql)?;
-                let mut result_rows = statement.query(rusqlite::params_from_iter(values.iter()))?;
-                while let Some(row) = result_rows.next()? {
-                    write_daily_row(writer, row)?;
-                    row_count += 1;
-                }
-            }
+        let mut statement = connection.prepare(&sql)?;
+        let mut result_rows = statement.query(rusqlite::params_from_iter(values.iter()))?;
+        while let Some(row) = result_rows.next()? {
+            write_daily_row(writer, row)?;
+            row_count += 1;
         }
         Ok(row_count)
     })?;
     Ok(ExportResult { path, rows })
+}
+
+/// 日次CSVの抽出SQLとbind値を組み立てる。`applications`が空配列なら`None`。
+fn daily_export_query(
+    applications: Option<&[String]>,
+    start_date: Option<NaiveDate>,
+    end_date: Option<NaiveDate>,
+) -> Option<(String, Vec<String>)> {
+    let mut conditions = Vec::new();
+    let mut values = Vec::new();
+    if let Some(start) = start_date {
+        conditions.push("date >= ?".to_owned());
+        values.push(start.to_string());
+    }
+    if let Some(end) = end_date {
+        conditions.push("date <= ?".to_owned());
+        values.push(end.to_string());
+    }
+    match applications {
+        Some([]) => return None,
+        Some(applications) => {
+            let placeholders = vec!["?"; applications.len()].join(",");
+            conditions.push(format!("application IN ({placeholders})"));
+            values.extend(applications.iter().cloned());
+        }
+        None => {}
+    }
+    let filter = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
+    Some((
+        format!(
+            "SELECT date, shortcut, application, count FROM shortcut_daily{filter} ORDER BY date ASC, shortcut ASC, application ASC"
+        ),
+        values,
+    ))
 }
 
 fn sanitize_filename_component(value: &str) -> String {
@@ -433,7 +429,24 @@ where
     writer.write_all(b"\r\n")
 }
 
+/// 表計算ソフトが数式・DDEとして解釈しうる先頭文字。
+/// 日本語環境のExcelは全角の＝＋－＠も数式入力として扱うため含める。
+const FORMULA_TRIGGER_PREFIXES: [char; 10] =
+    ['=', '+', '-', '@', '\t', '\r', '＝', '＋', '－', '＠'];
+
+/// アプリ名は実行ファイル名に由来し任意の文字で始まりうるため、数式として
+/// 解釈されうる値は先頭に `'` を付けて文字列として開かせる（CSV injection対策）。
+fn neutralize_formula(field: &str) -> Cow<'_, str> {
+    if field.starts_with(FORMULA_TRIGGER_PREFIXES) {
+        Cow::Owned(format!("'{field}"))
+    } else {
+        Cow::Borrowed(field)
+    }
+}
+
 fn write_csv_field(writer: &mut impl Write, field: &str) -> Result<(), io::Error> {
+    let field = neutralize_formula(field);
+    let field = field.as_ref();
     if field
         .bytes()
         .any(|byte| matches!(byte, b',' | b'"' | b'\r' | b'\n'))
@@ -530,6 +543,78 @@ mod tests {
         assert!(content.starts_with("date,shortcut,application,count\r\n"));
         assert!(content.contains("2026-08-15,Ctrl+V,\"Code,Test.exe\",1\r\n"));
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn daily_export_query_binds_filters_in_placeholder_order() {
+        const COLUMNS: &str = "SELECT date, shortcut, application, count FROM shortcut_daily";
+        const ORDER: &str = " ORDER BY date ASC, shortcut ASC, application ASC";
+
+        let (sql, values) = daily_export_query(None, None, None).expect("all rows");
+        assert_eq!(sql, format!("{COLUMNS}{ORDER}"));
+        assert!(values.is_empty());
+
+        let applications = ["Code.exe".to_owned(), "EXCEL.EXE".to_owned()];
+        let (sql, values) = daily_export_query(
+            Some(&applications),
+            NaiveDate::from_ymd_opt(2026, 8, 1),
+            NaiveDate::from_ymd_opt(2026, 8, 31),
+        )
+        .expect("filtered rows");
+        assert_eq!(
+            sql,
+            format!("{COLUMNS} WHERE date >= ? AND date <= ? AND application IN (?,?){ORDER}")
+        );
+        assert_eq!(
+            values,
+            ["2026-08-01", "2026-08-31", "Code.exe", "EXCEL.EXE"]
+        );
+
+        let (sql, values) =
+            daily_export_query(None, None, NaiveDate::from_ymd_opt(2026, 8, 31)).expect("end only");
+        assert_eq!(sql, format!("{COLUMNS} WHERE date <= ?{ORDER}"));
+        assert_eq!(values, ["2026-08-31"]);
+
+        assert_eq!(daily_export_query(Some(&[]), None, None), None);
+    }
+
+    #[test]
+    fn formula_like_values_are_prefixed_with_apostrophe() {
+        for value in [
+            "=SUM(1,2)",
+            "+notepad.exe",
+            "-tool.exe",
+            "@SUM(A1)",
+            "\tTAB.exe",
+            "\rCR.exe",
+            "＝全角.exe",
+            "＋全角.exe",
+            "－全角.exe",
+            "＠全角.exe",
+        ] {
+            assert_eq!(neutralize_formula(value), format!("'{value}"), "{value:?}");
+        }
+        for value in [
+            "Ctrl+C",
+            "Ctrl+Shift+-",
+            "Code.exe",
+            "a=b.exe",
+            "2026-08-15",
+            "12",
+            "",
+        ] {
+            assert_eq!(neutralize_formula(value), value, "{value:?}");
+        }
+    }
+
+    #[test]
+    fn formula_guard_is_applied_before_csv_quoting() {
+        let mut output = Vec::new();
+        write_csv_record(&mut output, ["=HYPERLINK(\"x\",\"y\")", "+1", "Ctrl+C"]).expect("record");
+        assert_eq!(
+            String::from_utf8(output).expect("UTF-8"),
+            "\"'=HYPERLINK(\"\"x\"\",\"\"y\"\")\",'+1,Ctrl+C\r\n"
+        );
     }
 
     #[test]

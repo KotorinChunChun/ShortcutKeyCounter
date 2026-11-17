@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::eligibility::is_recordable;
-use crate::key_names::key_name;
+use crate::key_names::{is_modifier_key, main_input_name};
 use crate::model::{MainInput, ModifierState};
 
 /// 正規化できない入力の理由。
@@ -39,7 +39,7 @@ pub fn normalize_input(
     modifiers: &ModifierState,
     main_input: &MainInput,
 ) -> Result<String, NormalizeError> {
-    if matches!(main_input, MainInput::Key(vk) if crate::key_names::is_modifier_key(*vk)) {
+    if matches!(main_input, MainInput::Key(vk) if is_modifier_key(*vk)) {
         return Err(NormalizeError::IneligibleInput);
     }
 
@@ -57,18 +57,7 @@ pub fn normalize_input(
         parts.push("Shift");
     }
 
-    let main_name = match main_input {
-        MainInput::Key(vk) => key_name(*vk).ok_or(NormalizeError::UnsupportedKey(*vk))?,
-        MainInput::MouseLeft => "MouseLeft".to_owned(),
-        MainInput::MouseRight => "MouseRight".to_owned(),
-        MainInput::MouseMiddle => "MouseMiddle".to_owned(),
-        MainInput::MouseX1 => "MouseX1".to_owned(),
-        MainInput::MouseX2 => "MouseX2".to_owned(),
-        MainInput::WheelUp => "WheelUp".to_owned(),
-        MainInput::WheelDown => "WheelDown".to_owned(),
-        MainInput::WheelLeft => "WheelLeft".to_owned(),
-        MainInput::WheelRight => "WheelRight".to_owned(),
-    };
+    let main_name = main_input_name(main_input).map_err(NormalizeError::UnsupportedKey)?;
     parts.push(main_name.as_str());
 
     Ok(parts.join("+"))

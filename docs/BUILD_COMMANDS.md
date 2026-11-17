@@ -30,6 +30,27 @@ cargo test --workspace --all-features
 pwsh -ExecutionPolicy Bypass -File .\apps\shortcut-key-counter\scripts\build-ui.ps1
 ```
 
+## 既存 Debug exe の画面を出さない UI 試験
+
+```powershell
+pwsh -ExecutionPolicy Bypass -File .\dev\scripts\test-exe-ShortcutKeyCounter-ui-background.ps1
+```
+
+既存の `target/debug/ShortcutKeyCounter.exe` を隔離試験モードで起動し、ウィンドウを表示しないまま UI を CLI から自動判定します。exe がない場合は失敗し、暗黙のビルドへ切り替えません。先に `build-debug-ShortcutKeyCounter-all.ps1` を実行してください。Node.js 22.13 以上が必要です。
+
+- 対象: UI と同じ経路での Tauri command 呼び出し、統計・期間の検証、CSV・バックアップ・JSON 出力、設定・除外アプリ、キーマッピングの未保存ガード、DB 切替とサンプル生成、全 11 画面の表示と JS 例外の有無。各画面のスクリーンショットと `report.json` を出力先に保存します。
+- 隔離: 保存先・出力先・WebView2 profile は出力先フォルダー内の `localappdata` に置きます。入力 Hook、自動起動の同期、Overlay、本体管理窓口は使わず、単一起動も通常版と別の名前空間で判定するため、通常版を起動したままでも実行できます。
+- 判定: 試験項目に加えて、利用者に見えるウィンドウを表示していないこと、前面ウィンドウを取得していないこと、通常版の保存先を変更していないことを確認します。
+- 対象外: Overlay の実描画、実際のキー・マウス入力の Hook、トレイ操作、UAC、フォルダー・URL を開く操作は、前面表示や実入力が必要なため Windows 実機受入で確認します。
+- 出力先は既定で一時フォルダーです。`-OutputDirectory` で変更できます。
+
+隔離試験モードは Debug ビルドだけで有効です。Release exe を指定した場合は、本番の保存先と入力 Hook を使うため実行を拒否します。手動で起動する場合は、次の環境変数をそのプロセスだけに設定します。
+
+| 環境変数 | 内容 |
+|---|---|
+| `SHORTCUT_KEY_COUNTER_TEST_LOCALAPPDATA` | 隔離先の絶対パス。保存先・出力先・WebView2 profile を隔離し、Hook・自動起動同期・Overlay・管理窓口を止める |
+| `SHORTCUT_KEY_COUNTER_TEST_BACKGROUND_UI` | `1` のとき、UI を非表示・非アクティブ・タスクバー非表示で生成する。上の変数がない場合は無視する |
+
 ## 既存 exe の WebView lifecycle 試験
 
 ```powershell

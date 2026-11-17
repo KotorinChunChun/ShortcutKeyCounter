@@ -20,6 +20,7 @@ pub mod security_gate;
 pub mod settings;
 pub mod startup;
 pub mod tauri_commands;
+pub mod test_mode;
 pub mod tray;
 
 pub mod app_info;
