@@ -144,63 +144,58 @@ fn export_daily_csv_at(
     let path = output_directory.join(filename);
     let rows = write_export_file(&path, |writer| {
         write_csv_record(writer, ["date", "shortcut", "application", "count"])?;
+        // アプリを1つも選ばない場合はヘッダーだけを出力する（全件出力にはしない）。
+        let Some((sql, values)) = daily_export_query(applications, start_date, end_date) else {
+            return Ok(0);
+        };
         let mut row_count = 0_u64;
-        match applications {
-            Some([]) => {}
-            Some(applications) => {
-                let mut conditions = Vec::new();
-                let mut values = Vec::new();
-                if let Some(start) = start_date {
-                    conditions.push("date >= ?".to_owned());
-                    values.push(start.to_string());
-                }
-                if let Some(end) = end_date {
-                    conditions.push("date <= ?".to_owned());
-                    values.push(end.to_string());
-                }
-                let placeholders = std::iter::repeat_n("?", applications.len())
-                    .collect::<Vec<_>>()
-                    .join(",");
-                conditions.push(format!("application IN ({placeholders})"));
-                values.extend(applications.iter().cloned());
-                let sql = format!(
-                    "SELECT date, shortcut, application, count FROM shortcut_daily WHERE {} ORDER BY date ASC, shortcut ASC, application ASC",
-                    conditions.join(" AND ")
-                );
-                let mut statement = connection.prepare(&sql)?;
-                let mut result_rows = statement.query(rusqlite::params_from_iter(values.iter()))?;
-                while let Some(row) = result_rows.next()? {
-                    write_daily_row(writer, row)?;
-                    row_count += 1;
-                }
-            }
-            None => {
-                let mut conditions = Vec::new();
-                let mut values = Vec::new();
-                if let Some(start) = start_date {
-                    conditions.push("date >= ?".to_owned());
-                    values.push(start.to_string());
-                }
-                if let Some(end) = end_date {
-                    conditions.push("date <= ?".to_owned());
-                    values.push(end.to_string());
-                }
-                let sql = if conditions.is_empty() {
-                    "SELECT date, shortcut, application, count FROM shortcut_daily ORDER BY date ASC, shortcut ASC, application ASC".to_owned()
-                } else {
-                    format!("SELECT date, shortcut, application, count FROM shortcut_daily WHERE {} ORDER BY date ASC, shortcut ASC, application ASC", conditions.join(" AND "))
-                };
-                let mut statement = connection.prepare(&sql)?;
-                let mut result_rows = statement.query(rusqlite::params_from_iter(values.iter()))?;
-                while let Some(row) = result_rows.next()? {
-                    write_daily_row(writer, row)?;
-                    row_count += 1;
-                }
-            }
+        let mut statement = connection.prepare(&sql)?;
+        let mut result_rows = statement.query(rusqlite::params_from_iter(values.iter()))?;
+        while let Some(row) = result_rows.next()? {
+            write_daily_row(writer, row)?;
+            row_count += 1;
         }
         Ok(row_count)
     })?;
     Ok(ExportResult { path, rows })
+}
+
+/// 日次CSVの抽出SQLとbind値を組み立てる。`applications`が空配列なら`None`。
+fn daily_export_query(
+    applications: Option<&[String]>,
+    start_date: Option<NaiveDate>,
+    end_date: Option<NaiveDate>,
+) -> Option<(String, Vec<String>)> {
+    let mut conditions = Vec::new();
+    let mut values = Vec::new();
+    if let Some(start) = start_date {
+        conditions.push("date >= ?".to_owned());
+        values.push(start.to_string());
+    }
+    if let Some(end) = end_date {
+        conditions.push("date <= ?".to_owned());
+        values.push(end.to_string());
+    }
+    match applications {
+        Some([]) => return None,
+        Some(applications) => {
+            let placeholders = vec!["?"; applications.len()].join(",");
+            conditions.push(format!("application IN ({placeholders})"));
+            values.extend(applications.iter().cloned());
+        }
+        None => {}
+    }
+    let filter = if conditions.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", conditions.join(" AND "))
+    };
+    Some((
+        format!(
+            "SELECT date, shortcut, application, count FROM shortcut_daily{filter} ORDER BY date ASC, shortcut ASC, application ASC"
+        ),
+        values,
+    ))
 }
 
 fn sanitize_filename_component(value: &str) -> String {
@@ -548,6 +543,39 @@ mod tests {
         assert!(content.starts_with("date,shortcut,application,count\r\n"));
         assert!(content.contains("2026-08-15,Ctrl+V,\"Code,Test.exe\",1\r\n"));
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[test]
+    fn daily_export_query_binds_filters_in_placeholder_order() {
+        const COLUMNS: &str = "SELECT date, shortcut, application, count FROM shortcut_daily";
+        const ORDER: &str = " ORDER BY date ASC, shortcut ASC, application ASC";
+
+        let (sql, values) = daily_export_query(None, None, None).expect("all rows");
+        assert_eq!(sql, format!("{COLUMNS}{ORDER}"));
+        assert!(values.is_empty());
+
+        let applications = ["Code.exe".to_owned(), "EXCEL.EXE".to_owned()];
+        let (sql, values) = daily_export_query(
+            Some(&applications),
+            NaiveDate::from_ymd_opt(2026, 8, 1),
+            NaiveDate::from_ymd_opt(2026, 8, 31),
+        )
+        .expect("filtered rows");
+        assert_eq!(
+            sql,
+            format!("{COLUMNS} WHERE date >= ? AND date <= ? AND application IN (?,?){ORDER}")
+        );
+        assert_eq!(
+            values,
+            ["2026-08-01", "2026-08-31", "Code.exe", "EXCEL.EXE"]
+        );
+
+        let (sql, values) =
+            daily_export_query(None, None, NaiveDate::from_ymd_opt(2026, 8, 31)).expect("end only");
+        assert_eq!(sql, format!("{COLUMNS} WHERE date <= ?{ORDER}"));
+        assert_eq!(values, ["2026-08-31"]);
+
+        assert_eq!(daily_export_query(Some(&[]), None, None), None);
     }
 
     #[test]
